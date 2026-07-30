@@ -1,0 +1,21 @@
+def stream_multi_model(symbol, news):
+    models = [
+        "deepseek-ai/DeepSeek-R1",
+        "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        "qwen/Qwen2.5-72B-Instruct"
+    ]
+
+    for model in models:
+        yield f"data: [MODEL START] {model}\n\n"
+
+        stream = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": f"{symbol} news:\n{news}"}],
+            stream=True
+        )
+
+        for chunk in stream:
+            token = chunk.choices[0].delta.get("content", "")
+            yield f"data: {model}: {token}\n\n"
+
+        yield f"data: [MODEL END] {model}\n\n"
