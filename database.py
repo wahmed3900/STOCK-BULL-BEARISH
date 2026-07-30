@@ -1,4 +1,4 @@
-"""
+s"""
 MongoDB persistence for the dashboard.
 Single-user MVP: one watchlist collection, one settings doc for tier.
 Swap this for a per-user schema once you add auth/Stripe.
