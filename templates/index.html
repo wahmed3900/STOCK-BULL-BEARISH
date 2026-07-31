@@ -20,8 +20,8 @@
     </style>
 </head>
 <body>
-    <h1>📈 Stock Bull/Bearish Dashboard</h1>
-    <span class="tier-badge">{{ tier|capitalize }} tier ({{ quotes|length }}/{{ limit if tier == "free" else "∞" }} tickers)</span>
+    <h1>Stock Bull/Bearish Dashboard</h1>
+    <span class="tier-badge">{{ tier|capitalize }} tier</span>
 
     {% if at_limit %}
         <p class="limit-msg">You've reached the free tier limit of {{ limit }} tickers. Upgrade to add more.</p>
@@ -46,12 +46,8 @@
             <tr>
                 <td>{{ q.ticker }}</td>
                 <td>{% if q.price is not none %}${{ "%.2f"|format(q.price) }}{% else %}N/A{% endif %}</td>
-                <td class="{{ 'up' if q.change and q.change > 0 else 'down' if q.change and q.change < 0 else '' }}">
-                    {% if q.change is not none %}
-                        {{ "%.2f"|format(q.change) }} ({{ "%.2f"|format(q.change_pct) }}%)
-                    {% else %}
-                        N/A
-                    {% endif %}
+                <td class="{% if q.change and q.change > 0 %}up{% elif q.change and q.change < 0 %}down{% endif %}">
+                    {% if q.change is not none %}{{ "%.2f"|format(q.change) }} ({{ "%.2f"|format(q.change_pct) }}%){% else %}N/A{% endif %}
                 </td>
                 <td>
                     <form method="POST" action="/remove" style="display:inline;">
@@ -60,5 +56,11 @@
                     </form>
                 </td>
             </tr>
-            {% else %}
-            <tr><td colspan="4">No
+            {% endfor %}
+            {% if quotes|length == 0 %}
+            <tr><td colspan="4">No tickers yet — add one above.</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</body>
+</html>
