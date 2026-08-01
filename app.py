@@ -1,3 +1,4 @@
+
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 import database as db
 from services.stock_data import get_quote
