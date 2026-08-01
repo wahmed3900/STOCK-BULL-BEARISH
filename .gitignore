@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+services/Add Your Webhook Route.py
+templates/Banner & Upgrade Form Component.html
+templates/inside quotebackend.py
