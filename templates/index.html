@@ -4,20 +4,73 @@
     <meta charset="UTF-8">
     <title>Stock Bull/Bearish Dashboard</title>
     <style>
-        body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f7f7f8; }
+        body {
+            font-family: -apple-system, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+            background: #f7f7f8;
+        }
         h1 { color: #222; }
-        .tier-badge { display: inline-block; padding: 4px 10px; border-radius: 6px; background: #e0e0e0; font-size: 13px; margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; }
-        th { background: #fafafa; font-size: 13px; text-transform: uppercase; color: #666; }
+        .tier-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: #e0e0e0;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+            vertical-align: top;
+        }
+        th {
+            background: #fafafa;
+            font-size: 13px;
+            text-transform: uppercase;
+            color: #666;
+        }
         .up { color: #16a34a; }
         .down { color: #dc2626; }
         form { margin: 20px 0; }
-        input[type="text"] { padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; width: 150px; }
-        button { padding: 8px 16px; border: none; background: #111; color: white; border-radius: 6px; cursor: pointer; }
-        button:disabled { background: #999; cursor: not-allowed; }
-        .limit-msg { color: #b45309; margin: 10px 0; }
-        .sentiment-reason { font-size: 12px; color: #666; display: block; margin-top: 2px; }
+        input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            width: 150px;
+        }
+        button {
+            padding: 8px 16px;
+            border: none;
+            background: #111;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background: #999;
+            cursor: not-allowed;
+        }
+        .limit-msg {
+            color: #b45309;
+            margin: 10px 0;
+        }
+        .sentiment-reason {
+            font-size: 12px;
+            color: #666;
+            display: block;
+            margin-top: 2px;
+        }
     </style>
 </head>
 <body>
@@ -25,11 +78,18 @@
     <span class="tier-badge">{{ tier|capitalize }} tier</span>
 
     {% if at_limit %}
-        <p class="limit-msg">You've reached the free tier limit of {{ limit }} tickers. Upgrade to add more.</p>
+        <p class="limit-msg">
+            You've reached the free tier limit of {{ limit }} tickers. Upgrade to add more.
+        </p>
     {% endif %}
 
     <form method="POST" action="/add">
-        <input type="text" name="ticker" placeholder="e.g. AAPL" {% if at_limit %}disabled{% endif %}>
+        <input
+            type="text"
+            name="ticker"
+            placeholder="e.g. AAPL"
+            {% if at_limit %}disabled{% endif %}
+        >
         <button type="submit" {% if at_limit %}disabled{% endif %}>Add Ticker</button>
     </form>
 
@@ -47,9 +107,15 @@
             {% for q in quotes %}
             <tr>
                 <td>{{ q.ticker }}</td>
-                <td>{% if q.price is not none %}${{ "%.2f"|format(q.price) }}{% else %}N/A{% endif %}</td>
+                <td>
+                    {% if q.price is not none %}${{ "%.2f"|format(q.price) }}{% else %}N/A{% endif %}
+                </td>
                 <td class="{% if q.change and q.change > 0 %}up{% elif q.change and q.change < 0 %}down{% endif %}">
-                    {% if q.change is not none %}{{ "%.2f"|format(q.change) }} ({{ "%.2f"|format(q.change_pct) }}%){% else %}N/A{% endif %}
+                    {% if q.change is not none %}
+                        {{ "%.2f"|format(q.change) }} ({{ "%.2f"|format(q.change_pct) }}%)
+                    {% else %}
+                        N/A
+                    {% endif %}
                 </td>
                 <td>
                     {% if q.sentiment %}
@@ -58,7 +124,7 @@
                     {% endif %}
                 </td>
                 <td>
-                    <form method="POST" action="/remove" style="display:inline;">
+                    <form method="POST" action="/remove" style="display: inline;">
                         <input type="hidden" name="ticker" value="{{ q.ticker }}">
                         <button type="submit">Remove</button>
                     </form>
@@ -66,9 +132,11 @@
             </tr>
             {% endfor %}
             {% if quotes|length == 0 %}
-            <tr><td colspan="5">No tickers yet — add one above.</td></tr>
+                <tr>
+                    <td colspan="5">No tickers yet — add one above.</td>
+                </tr>
             {% endif %}
         </tbody>
     </table>
 </body>
-</html>npx skills add heygen-com/hyperframes --all
+</html>
