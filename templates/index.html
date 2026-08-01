@@ -1,40 +1,92 @@
-<!-- SENTIMENT COLUMN -->
-<td class="p-2 align-middle">
-  <!-- Use Jinja's fallback filter to safely assign values -->
-  {% set sentiment = quote.get('sentiment', {}) if quote is defined and quote else {} %}
-  {% set verdict = sentiment.get('verdict', 'N/A') %}
-  {% set reason = sentiment.get('reason', '') %}
+<div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead>
+            <tr class="bg-gray-50 border-b border-gray-200">
+                <th scope="col" class="p-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Ticker</th>
+                <th scope="col" class="p-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Price</th>
+                <th scope="col" class="p-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Change</th>
+                <th scope="col" class="p-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">AI Verdict</th>
+                <th scope="col" class="p-3 class="p-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-100">
+            {% for quote in quotes if quotes is iterable %}
+            <tr class="hover:bg-gray-50 transition-colors duration-150">
+                <!-- TICKER -->
+                <td class="p-3 align-middle font-bold text-gray-900 tracking-wide">
+                    {{ quote.get('ticker', 'UNKNOWN') }}
+                </td>
+                
+                <!-- PRICE -->
+                <td class="p-3 align-middle text-sm text-gray-700 font-medium">
+                    {% if quote.get('price') is not none %}
+                        ${{ "%.2f"|format(quote.price) }}
+                    {% else %}
+                        <span class="text-gray-400 italic">Unavailable</span>
+                    {% endif %}
+                </td>
 
-  <div class="flex items-center gap-2">
-    {% if verdict == "Bullish" %}
-      <span class="px-2 py-1 text-xs font-semibold bg-green-100 text-green-700 rounded">
-        Bullish
-      </span>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="#22c55e">
-        <path d="M5 3l2 4h10l2-4 2 1-3 6v4h-2v6h-2v-6h-4v6H8v-6H6v-4L3 4l2-1z"/>
-      </svg>
-    {% elif verdict == "Bearish" %}
-      <span class="px-2 py-1 text-xs font-semibold bg-red-100 text-red-700 rounded">
-        Bearish
-      </span>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="#ef4444">
-        <path d="M12 2l4 4h4v2h-2v3h-2v3h-2v6h-2v-6H8v6H6v-6H4v-3H2V6h4l4-4z"/>
-      </svg>
-    {% elif verdict == "Locked" %}
-      <span class="px-2 py-1 text-xs font-semibold bg-amber-100 text-amber-700 rounded">
-        🔒 Locked
-      </span>
-    {% else %}
-      <span class="px-2 py-1 text-xs font-semibold bg-gray-200 text-gray-700 rounded">
-        Neutral
-      </span>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="#9ca3af">
-        <circle cx="12" cy="12" r="9"/>
-      </svg>
-    {% endif %}
-  </div>
+                <!-- PRICE CHANGE -->
+                <td class="p-3 align-middle text-sm font-medium">
+                    {% if quote.get('change') is not none %}
+                        {% set is_positive = quote.change >= 0 %}
+                        <span class="{{ 'text-green-600' if is_positive else 'text-red-600' }}">
+                            {{ '+' if is_positive else '' }}{{ "%.2f"|format(quote.change) }} 
+                            ({{ "%.2f"|format(quote.change_pct) }}%)
+                        </span>
+                    {% else %}
+                        <span class="text-gray-400">—</span>
+                    {% endif %}
+                </td>
+                
+                <!-- AI VERDICT SENTIMENT COLUMN -->
+                <td class="p-3 align-middle text-sm">
+                    {% set sentiment = quote.get('sentiment') if quote.get('sentiment') is mapping else {} %}
+                    {% set verdict = sentiment.get('verdict', 'N/A') %}
+                    {% set reason = sentiment.get('reason', '') %}
 
-  {% if reason %}
-    <div class="text-xs text-gray-500 mt-1">{{ reason }}</div>
-  {% endif %}
-</td>
+                    <div class="flex items-center gap-2">
+                        {% if verdict == "Bullish" %}
+                            <span class="inline-flex items-center px-2 py-0.5 text-xs font-semibold bg-green-100 text-green-700 rounded-full">Bullish</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="#22c55e" aria-hidden="true"><path d="M5 3l2 4h10l2-4 2 1-3 6v4h-2v6h-2v-6h-4v6H8v-6H6v-4L3 4l2-1z"/></svg>
+                        {% elif verdict == "Bearish" %}
+                            <span class="inline-flex items-center px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded-full">Bearish</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="#ef4444" aria-hidden="true"><path d="M12 2l4 4h4v2h-2v3h-2v3h-2v6h-2v-6H8v6H6v-6H4v-3H2V6h4l4-4z"/></svg>
+                        {% elif verdict == "Locked" %}
+                            <span class="inline-flex items-center px-2 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 rounded-full">
+                                <span class="mr-1">🔒</span> Locked
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center px-2 py-0.5 text-xs font-semibold bg-gray-200 text-gray-700 rounded-full">Neutral</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="#9ca3af" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg>
+                        {% endif %}
+                    </div>
+                    {% if reason %}
+                        <p class="text-xs text-gray-500 mt-1 max-w-md leading-relaxed">{{ reason }}</p>
+                    {% endif %}
+                </td>
+
+                <!-- REMOVE ACTIONS BUTTON -->
+                <td class="p-3 align-middle text-center">
+                    <form action="{{ url_for('remove_stock', ticker=quote.get('ticker')) }}" method="POST" class="inline-block" onsubmit="return confirm('Remove {{ quote.get('ticker') }} from watchlist?');">
+                        <button type="submit" class="text-gray-400 hover:text-red-600 p-1 rounded hover:bg-gray-100 transition-colors" aria-label="Remove stock">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <!-- EMPTY WATCHLIST STATE LAYOUT FALLBACK -->
+            <tr>
+                <td colspan="5" class="p-12 text-center text-gray-500">
+                    <div class="max-w-sm mx-auto flex flex-col items-center">
+                        <svg class="w-12 h-12 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 002-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                        <p class="font-semibold text-base text-gray-800">Your watchlist is empty</p>
+                        <p class="text-sm text-gray-400 mt-1">Submit a stock ticker using the entry form container above to start scanning market trends.</p>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
