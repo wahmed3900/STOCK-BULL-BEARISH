@@ -1,100 +1,40 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Stock Bull/Bearish Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-</head>
+<!-- SENTIMENT COLUMN -->
+<td class="p-2 align-middle">
+  <!-- Use Jinja's fallback filter to safely assign values -->
+  {% set sentiment = quote.get('sentiment', {}) if quote is defined and quote else {} %}
+  {% set verdict = sentiment.get('verdict', 'N/A') %}
+  {% set reason = sentiment.get('reason', '') %}
 
-<body class="bg-gray-100 p-8">
+  <div class="flex items-center gap-2">
+    {% if verdict == "Bullish" %}
+      <span class="px-2 py-1 text-xs font-semibold bg-green-100 text-green-700 rounded">
+        Bullish
+      </span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="#22c55e">
+        <path d="M5 3l2 4h10l2-4 2 1-3 6v4h-2v6h-2v-6h-4v6H8v-6H6v-4L3 4l2-1z"/>
+      </svg>
+    {% elif verdict == "Bearish" %}
+      <span class="px-2 py-1 text-xs font-semibold bg-red-100 text-red-700 rounded">
+        Bearish
+      </span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="#ef4444">
+        <path d="M12 2l4 4h4v2h-2v3h-2v3h-2v6h-2v-6H8v6H6v-6H4v-3H2V6h4l4-4z"/>
+      </svg>
+    {% elif verdict == "Locked" %}
+      <span class="px-2 py-1 text-xs font-semibold bg-amber-100 text-amber-700 rounded">
+        🔒 Locked
+      </span>
+    {% else %}
+      <span class="px-2 py-1 text-xs font-semibold bg-gray-200 text-gray-700 rounded">
+        Neutral
+      </span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="#9ca3af">
+        <circle cx="12" cy="12" r="9"/>
+      </svg>
+    {% endif %}
+  </div>
 
-  <h1 class="text-3xl font-bold mb-2">Stock Bull/Bearish Dashboard</h1>
-  <span class="bg-blue-600 text-white px-2 py-1 rounded">Free tier</span>
-
-  <!-- Add Ticker Form -->
-  <form method="POST" action="/add" class="mt-6 flex gap-2">
-    <input 
-      type="text" 
-      name="ticker" 
-      placeholder="e.g. AAPL" 
-      class="border p-2 rounded w-48"
-    >
-    <button class="bg-green-600 text-white px-4 py-2 rounded">Add Ticker</button>
-  </form>
-
-  <!-- Table -->
-  <table class="w-full text-left mt-8 bg-white shadow rounded">
-    <thead class="bg-gray-200">
-      <tr>
-        <th class="p-2">Ticker</th>
-        <th class="p-2">Price</th>
-        <th class="p-2">Change</th>
-        <th class="p-2">%</th>
-        <th class="p-2">Sentiment</th>
-        <th class="p-2">Action</th>
-      </tr>
-    </thead>
-
-    <tbody>
-      {% for quote in quotes %}
-      <tr class="border-b">
-
-        <td class="p-2">{{ quote.ticker }}</td>
-        <td class="p-2">{{ quote.price }}</td>
-        <td class="p-2">{{ quote.change }}</td>
-        <td class="p-2">{{ quote.change_pct }}</td>
-
-        <!-- SENTIMENT COLUMN -->
-        <td class="p-2 flex items-center gap-3">
-
-          {% if quote.sentiment.verdict == "Bullish" %}
-            <!-- Badge -->
-            <span class="px-2 py-1 text-xs font-semibold bg-green-100 text-green-700 rounded">
-              Bullish
-            </span>
-            <!-- Icon -->
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="#22c55e">
-              <path d="M5 3l2 4h10l2-4 2 1-3 6v4h-2v6h-2v-6h-4v6H8v-6H6v-4L3 4l2-1z"/>
-            </svg>
-
-          {% elif quote.sentiment.verdict == "Bearish" %}
-            <!-- Badge -->
-            <span class="px-2 py-1 text-xs font-semibold bg-red-100 text-red-700 rounded">
-              Bearish
-            </span>
-            <!-- Icon -->
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="#ef4444">
-              <path d="M12 2l4 4h4v2h-2v3h-2v3h-2v6h-2v-6H8v6H6v-6H4v-3H2V6h4l4-4z"/>
-            </svg>
-
-          {% else %}
-            <!-- Badge -->
-            <span class="px-2 py-1 text-xs font-semibold bg-gray-200 text-gray-700 rounded">
-              Neutral
-            </span>
-            <!-- Icon -->
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="#9ca3af">
-              <circle cx="12" cy="12" r="9"/>
-            </svg>
-          {% endif %}
-
-          {% if quote.sentiment.reason %}
-            <div class="text-xs text-gray-500">{{ quote.sentiment.reason }}</div>
-          {% endif %}
-
-        </td>
-
-        <!-- REMOVE BUTTON -->
-        <td class="p-2">
-          <form action="/remove/{{ quote.ticker }}" method="POST">
-            <button class="text-red-600 hover:text-red-800">Remove</button>
-          </form>
-        </td>
-
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-</body>
-</html>
+  {% if reason %}
+    <div class="text-xs text-gray-500 mt-1">{{ reason }}</div>
+  {% endif %}
+</td>
