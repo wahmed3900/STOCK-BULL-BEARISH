@@ -1,4 +1,11 @@
 
+
+from flask import Response
+import time
+import json
+
+START_TIME = time.time()
+
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 import database as db
 from services.stock_data import get_quote
@@ -91,3 +98,44 @@ def downgrade():
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
+
+# ---- /api/health ----
+@app.route("/api/health")
+def api_health():
+    try:
+        watchlist = db.get_watchlist()
+        db_ok = True
+    except Exception:
+        watchlist = []
+        db_ok = False
+    return jsonify({
+        "status": "ok" if db_ok else "degraded",
+        "uptime_seconds": int(time.time() - START_TIME),
+        "database": db_ok,
+        "watchlist_count": len(watchlist),
+    }), (200 if db_ok else 503)
+
+
+# ---- /api/model ----
+@app.route("/api/model")
+def api_model():
+    test_quote = get_quote("AAPL")
+    if not test_quote:
+        return jsonify({"status": "down", "reason": "quote source unavailable"}), 503
+    try:
+        result = get_sentiment("AAPL", test_quote["price"], test_quote["change"], test_quote["change_pct"])
+        return jsonify({"status": "ok", "sample_verdict": result.get("verdict")}), 200
+    except Exception as e:
+        return jsonify({"status": "down", "reason": str(e)}), 503
+
+
+# ---- /stream/<ticker> ----
+@app.route("/stream/<ticker>")
+def stream(ticker):
+    ticker = ticker.strip().upper()
+    def event_stream():
+        for _ in range(60):
+            quote = get_quote(ticker)
+            yield f"data: {json.dumps(quote or {'error': 'no data'})}\n\n"
+            time.sleep(5)
+    return Response(event_stream(), mimetype="text/event-stream")
