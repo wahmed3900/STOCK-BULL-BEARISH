@@ -1,28 +1,35 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-
 import database as db
 from services.stock_data import get_quote
 from services.sentiment import get_sentiment
 
 app = Flask(__name__)
-app.secret_key = "dev-secret-change-me"  # replace before deploying
-
+app.secret_key = "dev-secret-change-me"
 db.init_db()
-
 
 @app.route("/")
 def index():
     tickers = db.get_watchlist()
     tier = db.get_tier()
-
     quotes = []
+
     for ticker in tickers:
         quote = get_quote(ticker)
         if quote:
+            if tier == "pro":
+                quote["sentiment"] = get_sentiment(ticker, quote["price"], quote["change"], quote["change_pct"])
+            else:
+                quote["sentiment"] = {"verdict": "Locked", "reason": "Upgrade to Pro for AI analysis."}
             quotes.append(quote)
         else:
-            quotes.append({"ticker": ticker, "price": None, "change": None,
-                            "change_pct": None, "source": "unavailable"})
+            quotes.append({
+                "ticker": ticker,
+                "price": None,
+                "change": None,
+                "change_pct": None,
+                "source": "unavailable",
+                "sentiment": {"verdict": "N/A", "reason": ""}
+            })
 
     return render_template(
         "index.html",
@@ -31,7 +38,6 @@ def index():
         limit=db.FREE_TIER_LIMIT,
         at_limit=(tier == "free" and len(tickers) >= db.FREE_TIER_LIMIT),
     )
-
 
 @app.route("/add", methods=["POST"])
 def add_stock():
@@ -52,9 +58,7 @@ def add_stock():
         else:
             db.add_ticker(ticker)
             flash(f"Added {ticker}.", "success")
-
     return redirect(url_for("index"))
-
 
 @app.route("/remove/<ticker>", methods=["POST"])
 def remove_stock(ticker):
@@ -62,39 +66,27 @@ def remove_stock(ticker):
     flash(f"Removed {ticker.upper()}.", "success")
     return redirect(url_for("index"))
 
-
 @app.route("/analyze/<ticker>")
 def analyze(ticker):
-    """AI bull/bearish verdict - Pro tier only."""
     if db.get_tier() != "pro":
         return jsonify({"verdict": "Locked", "reason": "Upgrade to Pro for AI analysis."}), 403
-
     quote = get_quote(ticker)
     if not quote or quote["price"] is None:
         return jsonify({"verdict": "Error", "reason": "No price data available."}), 400
-
     result = get_sentiment(ticker, quote["price"], quote["change"], quote["change_pct"])
     return jsonify(result)
 
-
 @app.route("/upgrade", methods=["POST"])
 def upgrade():
-    """
-    Demo toggle only - no payment is actually collected here.
-    Wire this up to Stripe Checkout before going live:
-    https://stripe.com/docs/checkout/quickstart
-    """
     db.set_tier("pro")
     flash("Upgraded to Pro (demo - no payment was processed).", "success")
     return redirect(url_for("index"))
-
 
 @app.route("/downgrade", methods=["POST"])
 def downgrade():
     db.set_tier("free")
     flash("Back to Free tier.", "success")
     return redirect(url_for("index"))
-
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
