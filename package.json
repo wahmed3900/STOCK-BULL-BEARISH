@@ -16,6 +16,7 @@
     "tailwindcss": "^4.3.3"
   },
   "dependencies": {
+    "@tailwindcss/cli": "^4.3.3",
     "baseline-browser-mapping": "^2.11.7",
     "browserslist": "^4.28.7",
     "caniuse-lite": "^1.0.30001806",
