@@ -1,0 +1,30 @@
+/* Premium Glass Card */
+.premium-card {
+  @apply bg-premium-glass backdrop-blur-md border border-white/10 shadow-premium rounded-xl p-6 premium-transition;
+}
+
+/* Premium Gradient Header */
+.premium-header {
+  background: linear-gradient(135deg, #6366f1, #10b981);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Premium Accent Border */
+.premium-accent {
+  @apply border border-premium-neon shadow-premium;
+}
+
+/* Premium Hover Glow */
+.premium-hover {
+  @apply transition-all duration-300 hover:shadow-[0_0_20px_rgba(16,185,129,0.6)];
+}
+
+/* Premium Typography */
+.premium-title {
+  @apply text-xl font-semibold premium-header mb-4;
+}
+
+.premium-text {
+  @apply text-slate-300 text-sm leading-relaxed;
+}
