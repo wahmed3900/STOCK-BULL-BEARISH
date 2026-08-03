@@ -89,6 +89,11 @@ def health():
     return {"status": "ok"}, 200
 
 
+@app.route("/api/health", methods=["GET"])
+def api_health():
+    return {"status": "ok"}, 200
+
+
 # register streaming blueprints
 try:
     from services import streaming as streaming_mod
