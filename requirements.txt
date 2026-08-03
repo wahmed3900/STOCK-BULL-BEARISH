@@ -7,3 +7,4 @@ pymongo>=4.8.0
 certifi
 together 
 openrouter
+analysis function + requirements.txt
