@@ -1,18 +1,3 @@
-import OpenAI from "openai";
-
-const together = new OpenAI({
-  apiKey: process.env.TOGETHER_API_KEY,
-  baseURL: "https://api.together.xyz/v1",
-});
-
-export async function togetherSentiment(prompt: string) {
-  const completion = await together.chat.completions.create({
-    model: "meta-llama/Meta-Llama-3.1-70B-Instruct",
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  return completion.choices[0].message.content;
-}
 :root {
     --bull: #16a34a;
     --bear: #dc2626;
@@ -88,6 +73,73 @@ h1 { font-size: 1.5rem; margin: 0; }
     color: white;
     font-weight: 600;
     cursor: pointer;
+}
+.info-btn {
+    margin-top: 14px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(59, 130, 246, 0.12);
+    color: var(--text);
+    cursor: pointer;
+    font-weight: 600;
+}
+.info-btn:hover {
+    background: rgba(59, 130, 246, 0.18);
+}
+.simple-dialog {
+    width: min(560px, 90vw);
+    border: none;
+    border-radius: 18px;
+    padding: 0;
+    background: var(--card);
+    color: var(--text);
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
+}
+.simple-dialog::backdrop {
+    background: rgba(15, 17, 21, 0.75);
+    backdrop-filter: blur(2px);
+}
+.dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px 0;
+    gap: 12px;
+}
+.dialog-header h3 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+.dialog-close {
+    border: none;
+    background: none;
+    color: var(--muted);
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.dialog-body {
+    padding: 0 24px 20px;
+    color: var(--muted);
+    line-height: 1.7;
+}
+.dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 24px 24px;
+}
+.dialog-button {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+    font-weight: 600;
+}
+.dialog-button:hover {
+    background: #2563eb;
 }
 .limit-note { color: var(--muted); font-size: 0.85rem; margin: 0 0 20px; }
 

@@ -223,3 +223,9 @@ templates/Banner & Upgrade Form Component.html
 templates/inside quotebackend.py
 services/Add Your Webhook Route.py
 templates/Banner & Upgrade Form Component.html
+.DS_Store
+node_modules/
+.env
+.env.local
+__pycache__/
+app_log.txt
