@@ -5,6 +5,4 @@ requests==2.33.1
 yfinance>=0.2.40
 pymongo>=4.8.0
 certifi
-together 
-openrouter
- analysis function + requirements.txt
+together
