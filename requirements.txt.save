@@ -13,4 +13,4 @@ yfinance>=0.2.40
 pymongo>=4.8.0
 certifi
 together ai
-open router
+open router ai
