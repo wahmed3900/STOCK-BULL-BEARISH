@@ -80,3 +80,69 @@ stock-dashboard/
 ├── requirements.txt
 └── .env.example
 ```
+
+## Deploy (Render / Heroku)
+
+Quick notes to deploy this app to Render or Heroku.
+
+- Ensure required environment variables are set before deploy:
+  - `OPENROUTER_API_KEY` — enables AI sentiment
+  - `ALPHA_VANTAGE_API_KEY` — optional fallback for quotes
+  - `MONGODB_URI` and `MONGODB_DB_NAME` — production MongoDB (Atlas recommended)
+  - `TOGETHER_API_KEY` — if you use together.ai streaming endpoints
+  - `SECRET_KEY` — Flask secret for sessions
+
+- A `Procfile` is included and uses Gunicorn to run the app in production:
+
+```
+web: gunicorn app:app --log-file -
+```
+
+- Heroku quick deploy
+
+```
+heroku create my-stock-dashboard
+heroku config:set OPENROUTER_API_KEY=… MONGODB_URI=… MONGODB_DB_NAME=stock_dashboard SECRET_KEY=…
+git push heroku main
+```
+
+- Render quick deploy
+
+1. Create a new Web Service in Render and link the GitHub repo.
+2. Set the Environment to `Python`, and in the "Start Command" use the Procfile or set:
+
+```
+gunicorn app:app --log-file -
+```
+
+3. Add environment variables in the Render dashboard (same names as above).
+
+- Local production-like start
+
+```
+pip install -r requirements.txt
+PORT=5001 gunicorn app:app --log-file -
+```
+
+Notes:
+- The app will fall back to an in-memory default tier if MongoDB is unavailable, but for production you should provide a managed MongoDB (Atlas) and set `MONGODB_URI`.
+- If you rely on real-time streaming (`/stream` or `/sentiment`), ensure `TOGETHER_API_KEY` is configured in the environment.
+
+Docker (local)
+
+Use Docker Compose to run a local MongoDB and the app for development/testing:
+
+```
+docker-compose build
+docker-compose up
+```
+
+This maps container port `5000` to host `5001` so the app is available at `http://localhost:5001` and Mongo is available at `mongodb://localhost:27017`.
+
+Differences between tasks we added:
+
+- `requirements.txt` (`together`): installs the Together.ai SDK so server-side streaming uses real model tokens instead of the fallback error.
+- `runtime.txt`: pins the Python runtime used by hosting providers (Heroku/Render) to avoid runtime mismatches.
+- `Dockerfile` + `docker-compose.yml`: provide a reproducible local environment (app + Mongo) for development and integration testing; useful when you don't want to rely on external managed services during development.
+
+
