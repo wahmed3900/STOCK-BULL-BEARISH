@@ -1,8 +1,0 @@
-{% if user.subscription != "free" %}
-  {% include "components/confidence_meter.html" %}
-  {% include "components/trend_heatmap.html" %}
-  {% include "components/risk_radar.html" %}
-  {% include "components/sentiment_grid.html" %}
-{% else %}
-  <p class="text-slate-400">Upgrade to unlock premium widgets</p>
-{% endif %}
