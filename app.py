@@ -1,141 +1,107 @@
+import os
 
+from flask import Flask, flash, redirect, render_template, request, url_for
 
-from flask import Response
-import time
-import json
-
-START_TIME = time.time()
-
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-import database as db
-from services.stock_data import get_quote
+from database import get_tier, init_db, set_tier
 from services.sentiment import get_sentiment
+from services.stock_data import get_quote
 
 app = Flask(__name__)
-app.secret_key = "dev-secret-change-me"
-db.init_db()
+app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret")
 
-@app.route("/")
-def index():
-    tickers = db.get_watchlist()
-    tier = db.get_tier()
-    quotes = []
+try:
+    init_db()
+except Exception:
+    pass
 
-    for ticker in tickers:
-        quote = get_quote(ticker)
-        if quote:
-            if tier == "pro":
-                quote["sentiment"] = get_sentiment(ticker, quote["price"], quote["change"], quote["change_pct"])
-            else:
-                quote["sentiment"] = {"verdict": "Locked", "reason": "Upgrade to Pro for AI analysis."}
-            quotes.append(quote)
-        else:
-            quotes.append({
-                "ticker": ticker,
-                "price": None,
-                "change": None,
-                "change_pct": None,
-                "source": "unavailable",
-                "sentiment": {"verdict": "N/A", "reason": ""}
-            })
 
-    return render_template(
-        "index.html",
-        quotes=quotes,
-        tier=tier,
-        limit=db.FREE_TIER_LIMIT,
-        at_limit=(tier == "free" and len(tickers) >= db.FREE_TIER_LIMIT),
+def analyze_ticker(ticker: str):
+    quote = get_quote(ticker)
+    if not quote:
+        return None
+
+    sentiment = get_sentiment(
+        quote["ticker"], quote["price"], quote["change"], quote["change_pct"]
     )
 
-@app.route("/add", methods=["POST"])
-def add_stock():
-    ticker = request.form.get("ticker", "").strip().upper()
-    tier = db.get_tier()
-    watchlist = db.get_watchlist()
+    return {
+        "ticker": quote["ticker"],
+        "price": quote["price"],
+        "sentiment": sentiment["verdict"],
+        "summary": sentiment["reason"],
+        "source": quote.get("source", "unknown"),
+    }
 
+
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html", tier=get_tier())
+
+
+@app.route("/analyze", methods=["POST"])
+def analyze():
+    ticker = request.form.get("ticker", "").strip()
     if not ticker:
-        flash("Enter a ticker symbol.", "error")
-    elif ticker in watchlist:
-        flash(f"{ticker} is already on your watchlist.", "error")
-    elif tier == "free" and len(watchlist) >= db.FREE_TIER_LIMIT:
-        flash(f"Free tier is limited to {db.FREE_TIER_LIMIT} stocks. Upgrade to add more.", "error")
-    else:
-        quote = get_quote(ticker)
-        if not quote:
-            flash(f"Couldn't find price data for '{ticker}'. Check the symbol.", "error")
-        else:
-            db.add_ticker(ticker)
-            flash(f"Added {ticker}.", "success")
-    return redirect(url_for("index"))
+        flash("Enter a stock ticker like AAPL, TSLA, or NVDA.")
+        return redirect(url_for("index"))
 
-@app.route("/remove/<ticker>", methods=["POST"])
-def remove_stock(ticker):
-    db.remove_ticker(ticker)
-    flash(f"Removed {ticker.upper()}.", "success")
-    return redirect(url_for("index"))
+    result = analyze_ticker(ticker)
+    if not result:
+        flash("Could not retrieve quote data for that ticker. Please try a different symbol.")
+        return redirect(url_for("index"))
 
-@app.route("/analyze/<ticker>")
-def analyze(ticker):
-    if db.get_tier() != "pro":
-        return jsonify({"verdict": "Locked", "reason": "Upgrade to Pro for AI analysis."}), 403
-    quote = get_quote(ticker)
-    if not quote or quote["price"] is None:
-        return jsonify({"verdict": "Error", "reason": "No price data available."}), 400
-    result = get_sentiment(ticker, quote["price"], quote["change"], quote["change_pct"])
-    return jsonify(result)
+    return render_template("index.html", result=result, tier=get_tier())
+
+
+@app.route("/reanalyze", methods=["POST"])
+def reanalyze():
+    ticker = request.form.get("ticker", "").strip()
+    if not ticker:
+        flash("Missing ticker for re-analysis.")
+        return redirect(url_for("index"))
+
+    result = analyze_ticker(ticker)
+    if not result:
+        flash("Could not retrieve quote data for that ticker. Please try again.")
+        return redirect(url_for("index"))
+
+    return render_template("index.html", result=result, tier=get_tier())
+
+
+@app.route("/pricing", methods=["GET"])
+def pricing():
+    return render_template("pricing.html", tier=get_tier())
+
 
 @app.route("/upgrade", methods=["POST"])
 def upgrade():
-    db.set_tier("pro")
-    flash("Upgraded to Pro (demo - no payment was processed).", "success")
-    return redirect(url_for("index"))
+    tier = request.form.get("tier", "free")
+    if tier not in {"free", "starter", "pro"}:
+        tier = "free"
 
-@app.route("/downgrade", methods=["POST"])
-def downgrade():
-    db.set_tier("free")
-    flash("Back to Free tier.", "success")
-    return redirect(url_for("index"))
+    set_tier(tier)
+    flash(f"Subscription tier updated to {tier.title()}.")
+    return redirect(url_for("pricing"))
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    return {"status": "ok"}, 200
+
+
+# register streaming blueprints
+try:
+    from services import streaming as streaming_mod
+    app.register_blueprint(streaming_mod.bp)
+except Exception:
+    pass
+
+try:
+    from services.services import endpoint as endpoint_mod
+    app.register_blueprint(endpoint_mod.bp)
+except Exception:
+    pass
+
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
-
-# ---- /api/health ----
-@app.route("/api/health")
-def api_health():
-    try:
-        watchlist = db.get_watchlist()
-        db_ok = True
-    except Exception:
-        watchlist = []
-        db_ok = False
-    return jsonify({
-        "status": "ok" if db_ok else "degraded",
-        "uptime_seconds": int(time.time() - START_TIME),
-        "database": db_ok,
-        "watchlist_count": len(watchlist),
-    }), (200 if db_ok else 503)
-
-
-# ---- /api/model ----
-@app.route("/api/model")
-def api_model():
-    test_quote = get_quote("AAPL")
-    if not test_quote:
-        return jsonify({"status": "down", "reason": "quote source unavailable"}), 503
-    try:
-        result = get_sentiment("AAPL", test_quote["price"], test_quote["change"], test_quote["change_pct"])
-        return jsonify({"status": "ok", "sample_verdict": result.get("verdict")}), 200
-    except Exception as e:
-        return jsonify({"status": "down", "reason": str(e)}), 503
-
-
-# ---- /stream/<ticker> ----
-@app.route("/stream/<ticker>")
-def stream(ticker):
-    ticker = ticker.strip().upper()
-    def event_stream():
-        for _ in range(60):
-            quote = get_quote(ticker)
-            yield f"data: {json.dumps(quote or {'error': 'no data'})}\n\n"
-            time.sleep(5)
-    return Response(event_stream(), mimetype="text/event-stream")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
