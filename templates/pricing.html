@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="pricing-page">
+
+    <h2 class="pricing-title">💰 Choose Your Plan</h2>
+
+    <div class="pricing-grid">
+
+        <!-- Free Tier -->
+        <div class="pricing-card tier-free">
+            <h3>Free</h3>
+            <p class="tier-desc">Perfect for beginners</p>
+
+            <p class="tier-price">$0</p>
+
+            <ul class="tier-features">
+                <li>✔ Basic sentiment</li>
+                <li>✔ Basic stock data</li>
+                <li>✔ OpenRouter free models</li>
+                <li>✔ Limited daily usage</li>
+            </ul>
+
+            <form action="/upgrade" method="POST">
+                <input type="hidden" name="tier" value="free">
+                <button class="tier-btn">Get Started</button>
+            </form>
+        </div>
+
+        <!-- Starter Tier -->
+        <div class="pricing-card tier-starter highlight">
+            <h3>Starter</h3>
+            <p class="tier-desc">Best for everyday investors</p>
+
+            <p class="tier-price">$9<span>/mo</span></p>
+
+            <ul class="tier-features">
+                <li>✔ Advanced AI analysis</li>
+                <li>✔ Together.ai premium models</li>
+                <li>✔ Multi-stock comparison</li>
+                <li>✔ Portfolio insights</li>
+                <li>✔ Premium UI theme</li>
+            </ul>
+
+            <form action="/upgrade" method="POST">
+                <input type="hidden" name="tier" value="starter">
+                <button class="tier-btn tier-btn-highlight">Upgrade</button>
+            </form>
+        </div>
+
+        <!-- Pro Tier -->
+        <div class="pricing-card tier-pro">
+            <h3>Pro</h3>
+            <p class="tier-desc">For serious traders</p>
+
+            <p class="tier-price">$19<span>/mo</span></p>
+
+            <ul class="tier-features">
+                <li>✔ All Starter features</li>
+                <li>✔ Watchlist alerts</li>
+                <li>✔ SMS alerts</li>
+                <li>✔ Historical sentiment timeline</li>
+                <li>✔ Risk scoring</li>
+                <li>✔ Trend prediction</li>
+                <li>✔ Unlimited analysis</li>
+            </ul>
+
+            <form action="/upgrade" method="POST">
+                <input type="hidden" name="tier" value="pro">
+                <button class="tier-btn tier-btn-pro">Go Pro</button>
+            </form>
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

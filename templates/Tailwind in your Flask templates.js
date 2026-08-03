@@ -1,2 +1,0 @@
-<link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
-xcode-select --install

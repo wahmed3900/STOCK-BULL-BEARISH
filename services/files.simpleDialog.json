@@ -1,0 +1,7 @@
+{
+  "javascript.validate.enable": true,
+  "javascript.suggestionActions.enabled": true,
+  "typescript.validate.enable": true,
+  "typescript.tsserver.useSeparateSyntaxServer": true,
+  "typescript.tsserver.enableTracing": false
+}
