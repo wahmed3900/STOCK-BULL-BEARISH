@@ -55,3 +55,8 @@ def sentiment(symbol):
         yield "data: [DONE]\n\n"
 
     return Response(generate(), mimetype="text/event-stream")
+
+
+@bp.route("/stream/<symbol>")
+def stream_sentiment(symbol):
+    return sentiment(symbol)
