@@ -8,9 +8,8 @@ for the current list and swap MODEL below if this one is retired.
 import os
 import requests
 
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+MODEL = "openrouter/free"
 
 PROMPT_TEMPLATE = """You are a stock market analyst. Given this price data for {ticker}:
 - Current price: ${price}
@@ -23,7 +22,8 @@ price movement (do not invent other data you don't have).
 
 
 def get_sentiment(ticker: str, price: float, change: float, change_pct: float):
-    if not OPENROUTER_API_KEY:
+    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if not api_key:
         return {"verdict": "Unavailable", "reason": "Set OPENROUTER_API_KEY to enable AI analysis."}
 
     prompt = PROMPT_TEMPLATE.format(
@@ -34,7 +34,7 @@ def get_sentiment(ticker: str, price: float, change: float, change_pct: float):
         resp = requests.post(
             OPENROUTER_URL,
             headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={
@@ -44,8 +44,15 @@ def get_sentiment(ticker: str, price: float, change: float, change_pct: float):
             },
             timeout=20,
         )
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"].strip()
+        if resp.status_code != 200:
+            return {
+                "verdict": "Unavailable",
+                "reason": f"AI service responded with status {resp.status_code}: {resp.text[:200]}",
+            }
+
+        content = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        if not content:
+            return {"verdict": "Unavailable", "reason": "AI service returned no usable content."}
 
         lines = content.split("\n", 1)
         verdict = lines[0].strip().strip(".")
@@ -53,4 +60,4 @@ def get_sentiment(ticker: str, price: float, change: float, change_pct: float):
 
         return {"verdict": verdict, "reason": reason}
     except Exception as e:
-        return {"verdict": "Error", "reason": f"AI analysis failed: {e}"}
+        return {"verdict": "Unavailable", "reason": f"AI analysis unavailable: {e}"}

@@ -1,112 +1,97 @@
-import os
-
-from flask import Flask, flash, redirect, render_template, request, url_for
-
-from database import get_tier, init_db, set_tier
-from services.sentiment import get_sentiment
-from services.stock_data import get_quote
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for, flash
+import re
+import yfinance as yf
+from functools import lru_cache
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret")
+app.secret_key = 'your-secret-key-here'  # Change this!
 
-try:
-    init_db()
-except Exception:
-    pass
+# Cache validation results to avoid rate limits
+@lru_cache(maxsize=1000)
+def validate_ticker_cached(symbol):
+    """Validate if a ticker exists using yfinance"""
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        if info and info.get('symbol'):
+            return {
+                'valid': True,
+                'name': info.get('longName') or info.get('shortName') or symbol,
+                'sector': info.get('sector'),
+                'industry': info.get('industry')
+            }
+    except:
+        pass
+    return {'valid': False}
 
+@app.route('/api/validate-ticker')
+def validate_ticker():
+    """API endpoint to validate a ticker symbol"""
+    symbol = request.args.get('symbol', '').strip().upper()
 
-def analyze_ticker(ticker: str):
-    quote = get_quote(ticker)
-    if not quote:
-        return None
+    # Basic validation
+    if not re.match(r'^[A-Z]{1,5}$', symbol):
+        return jsonify({'valid': False, 'error': 'Invalid format'})
 
-    sentiment = get_sentiment(
-        quote["ticker"], quote["price"], quote["change"], quote["change_pct"]
-    )
+    # Check cache or fetch
+    result = validate_ticker_cached(symbol)
+    return jsonify(result)
 
-    return {
-        "ticker": quote["ticker"],
-        "price": quote["price"],
-        "sentiment": sentiment["verdict"],
-        "summary": sentiment["reason"],
-        "source": quote.get("source", "unknown"),
-    }
+@app.route('/api/search-tickers')
+def search_tickers():
+    """Search for tickers matching a query"""
+    query = request.args.get('q', '').strip().upper()
 
+    if len(query) < 2:
+        return jsonify({'suggestions': []})
 
-@app.route("/", methods=["GET"])
-def index():
-    return render_template("index.html", tier=get_tier())
+    # Common tickers list (you'd typically have this in a database)
+    common_tickers = [
+        {'symbol': 'AAPL', 'name': 'Apple Inc.'},
+        {'symbol': 'MSFT', 'name': 'Microsoft Corporation'},
+        {'symbol': 'GOOGL', 'name': 'Alphabet Inc.'},
+        {'symbol': 'AMZN', 'name': 'Amazon.com Inc.'},
+        {'symbol': 'TSLA', 'name': 'Tesla Inc.'},
+        {'symbol': 'META', 'name': 'Meta Platforms Inc.'},
+        {'symbol': 'NVDA', 'name': 'NVIDIA Corporation'},
+        {'symbol': 'JPM', 'name': 'JPMorgan Chase & Co.'},
+        {'symbol': 'VTI', 'name': 'Vanguard Total Stock Market ETF'},
+        {'symbol': 'SPY', 'name': 'SPDR S&P 500 ETF Trust'},
+    ]
 
+    # Filter matches
+    matches = [
+        t for t in common_tickers
+        if t['symbol'].startswith(query) or query in t['name']
+    ][:10]
 
-@app.route("/analyze", methods=["POST"])
-def analyze():
-    ticker = request.form.get("ticker", "").strip()
-    if not ticker:
-        flash("Enter a stock ticker like AAPL, TSLA, or NVDA.")
-        return redirect(url_for("index"))
+    return jsonify({'suggestions': matches})
 
-    result = analyze_ticker(ticker)
-    if not result:
-        flash("Could not retrieve quote data for that ticker. Please try a different symbol.")
-        return redirect(url_for("index"))
+@app.route('/')
+def dashboard():
+    """Main dashboard page"""
+    # Your existing dashboard logic
+    tier = session.get('tier', 'free')
+    return render_template('base.html', tier=tier)
 
-    return render_template("index.html", result=result, tier=get_tier())
+@app.route('/login')
+def login():
+    # Your Google OAuth login
+    return redirect(url_for('dashboard'))
 
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('You have been logged out', 'info')
+    return redirect(url_for('dashboard'))
 
-@app.route("/reanalyze", methods=["POST"])
-def reanalyze():
-    ticker = request.form.get("ticker", "").strip()
-    if not ticker:
-        flash("Missing ticker for re-analysis.")
-        return redirect(url_for("index"))
+@app.route('/demo_login')
+def demo_login():
+    session['user_name'] = 'Demo User'
+    session['tier'] = 'premium'
+    flash('Logged in as Demo User (Premium Tier)', 'success')
+    return redirect(url_for('dashboard'))
 
-    result = analyze_ticker(ticker)
-    if not result:
-        flash("Could not retrieve quote data for that ticker. Please try again.")
-        return redirect(url_for("index"))
-
-    return render_template("index.html", result=result, tier=get_tier())
-
-
-@app.route("/pricing", methods=["GET"])
-def pricing():
-    return render_template("pricing.html", tier=get_tier())
-
-
-@app.route("/upgrade", methods=["POST"])
-def upgrade():
-    tier = request.form.get("tier", "free")
-    if tier not in {"free", "starter", "pro"}:
-        tier = "free"
-
-    set_tier(tier)
-    flash(f"Subscription tier updated to {tier.title()}.")
-    return redirect(url_for("pricing"))
-
-
-@app.route("/health", methods=["GET"])
-def health():
-    return {"status": "ok"}, 200
-
-
-@app.route("/api/health", methods=["GET"])
-def api_health():
-    return {"status": "ok"}, 200
-
-
-# register streaming blueprints
-try:
-    from services import streaming as streaming_mod
-    app.register_blueprint(streaming_mod.bp)
-except Exception:
-    pass
-
-try:
-    from services.services import endpoint as endpoint_mod
-    app.register_blueprint(endpoint_mod.bp)
-except Exception:
-    pass
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+if __name__ == '__main__':
+    app.run(debug=True)
