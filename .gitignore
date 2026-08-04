@@ -12,3 +12,9 @@ services/Mac/
 main
 .env.local
 app_log.txt
+.DS_Store
+*.save
+*.bash
+venv/
+__pycache__/
+*.log

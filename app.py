@@ -3,13 +3,15 @@ import re
 import json
 import asyncio
 import logging
+import time
+import requests
+import pandas as pd
 from functools import lru_cache, wraps
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, Tuple, List, Union
 from dataclasses import dataclass, asdict
 from enum import Enum
 from concurrent.futures import ThreadPoolExecutor
-import time
 
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for, flash, g, abort
 import yfinance as yf
@@ -87,7 +89,6 @@ class Config:
     @classmethod
     def validate(cls):
         """Validate configuration"""
-        # Validate Redis URL if provided
         if cls.REDIS_URL and not cls.REDIS_URL.startswith(('redis://', 'rediss://', 'memory://')):
             raise ValueError("Invalid REDIS_URL format. Must start with redis://, rediss://, or memory://")
 
@@ -493,10 +494,6 @@ def validate_ticker_sync(symbol: str) -> TickerInfo:
 
     # Validate with yfinance
     try:
-        import requests
-        session = requests.Session()
-        session.timeout = Config.REQUEST_TIMEOUT
-
         ticker = yf.Ticker(symbol)
         info = ticker.info
 
@@ -1004,140 +1001,4 @@ def demo_login():
     session['user_id'] = 'demo_user'
     session['user_name'] = 'Demo User'
     session['tier'] = 'premium'
-    session['login_time'] = datetime.now(timezone.utc).isoformat()
-
-    logger.info("demo_login", user_id='demo_user', tier='premium')
-    flash('Logged in as Demo User (Premium Tier)', 'success')
-    return redirect(url_for('dashboard'))
-
-@app.route('/logout')
-def logout():
-    """Logout user"""
-    user_id = session.get('user_id', 'unknown')
-    logger.info("user_logout", user_id=user_id)
-    session.clear()
-    flash('You have been logged out', 'info')
-    return redirect(url_for('dashboard'))
-
-# ==================== Error Handlers ====================
-
-@app.errorhandler(400)
-def bad_request(error):
-    """Handle 400 errors"""
-    logger.warning("bad_request", error=str(error))
-    return jsonify({
-        'error': 'Bad request',
-        'message': str(error)
-    }), 400
-
-@app.errorhandler(401)
-def unauthorized(error):
-    """Handle 401 errors"""
-    return jsonify({
-        'error': 'Unauthorized',
-        'message': 'Authentication required'
-    }), 401
-
-@app.errorhandler(403)
-def forbidden(error):
-    """Handle 403 errors"""
-    return jsonify({
-        'error': 'Forbidden',
-        'message': 'Insufficient permissions'
-    }), 403
-
-@app.errorhandler(404)
-def not_found(error):
-    """Handle 404 errors"""
-    return jsonify({
-        'error': 'Not found',
-        'message': 'The requested resource was not found'
-    }), 404
-
-@app.errorhandler(429)
-def ratelimit_handler(error):
-    """Handle rate limit errors"""
-    return jsonify({
-        'error': 'Too many requests',
-        'message': 'Rate limit exceeded. Please try again later.',
-        'retry_after': getattr(error, 'retry_after', 60)
-    }), 429
-
-@app.errorhandler(500)
-def server_error(error):
-    """Handle 500 errors"""
-    logger.error("server_error", error=str(error))
-    return jsonify({
-        'error': 'Internal server error',
-        'message': 'An unexpected error occurred'
-    }), 500
-
-# ==================== Middleware ====================
-
-@app.before_request
-def before_request():
-    """Setup request context"""
-    g.start_time = time.time()
-    g.request_id = f"{datetime.now(timezone.utc).timestamp()}-{id(request)}"
-
-    # Log request (except for health checks)
-    if not request.path.startswith('/api/health'):
-        logger.info(
-            "request_started",
-            request_id=g.request_id,
-            method=request.method,
-            path=request.path,
-            ip=request.remote_addr,
-            user_agent=request.headers.get('User-Agent', 'Unknown')
-        )
-
-@app.after_request
-def after_request(response):
-    """Log response and add headers"""
-    # Calculate duration
-    duration = time.time() - getattr(g, 'start_time', time.time())
-
-    # Add rate limit headers if available
-    if hasattr(request, 'rate_limits'):
-        for limit in request.rate_limits:
-            response.headers[f'X-RateLimit-{limit.name}'] = str(limit.limit)
-            response.headers[f'X-RateLimit-Remaining-{limit.name}'] = str(limit.remaining)
-            response.headers[f'X-RateLimit-Reset-{limit.name}'] = str(limit.reset_time)
-
-    # Add request ID header
-    response.headers['X-Request-ID'] = getattr(g, 'request_id', 'Unknown')
-
-    # Log response (except for health checks)
-    if not request.path.startswith('/api/health'):
-        logger.info(
-            "request_completed",
-            request_id=getattr(g, 'request_id', 'Unknown'),
-            status_code=response.status_code,
-            duration_ms=round(duration * 1000, 2)
-        )
-
-    return response
-
-# ==================== Main Entry Point ====================
-
-if __name__ == '__main__':
-    # Store start time for uptime tracking
-    app.config['START_TIME'] = ti "status": "active",
-        "model": "stock_validator",
-        "version": "1.0.0",e.time()
-
-    port = int(os.environ.get('PORT', 5000))
-    debug = app_config.DEBUG
-
-    if debug:
-        app.run(debug=True, host='0.0.0.0', port=port)
-    else:
-        # Production: Use Gunicorn or gevent
-        try:
-            from gevent.pywsgi import WSGIServer
-            logger.info("starting_gevent_server", port=port, environment=env)
-            http_server = WSGIServer(('0.0.0.0', port), app)
-            http_server.serve_forever()
-        except ImportError:
-            logger.warning("gevent_not_available_fallback_gunicorn")
-            app.run(debug=False, host='0.0.0.0', port=port)
+    session['login_time
