@@ -1,0 +1,6 @@
+# Add to .gitignore
+.DS_Store
+*.pyc
+__pycache__/
+*.log
+.env

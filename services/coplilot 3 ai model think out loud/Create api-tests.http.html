@@ -1,0 +1,23 @@
+### Get Model Info
+GET http://localhost:5000/api/model HTTP/1.1
+
+### Get Model Status
+GET http://localhost:5000/api/model/status HTTP/1.1
+Content-Type: application/json
+
+### Make a Prediction
+POST http://localhost:5000/api/model/predict HTTP/1.1
+Content-Type: application/json
+
+{
+    "features": [1.2, 3.4, 5.6, 7.8]
+}
+
+### Train the Model
+POST http://localhost:5000/api/model/train HTTP/1.1
+Content-Type: application/json
+
+{
+    "dataset": "training_data.csv",
+    "epochs": 100
+}
