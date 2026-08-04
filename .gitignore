@@ -18,3 +18,5 @@ app_log.txt
 venv/
 __pycache__/
 *.log
+.DS_Store
+*.save
