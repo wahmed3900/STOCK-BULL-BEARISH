@@ -1,6 +1,12 @@
+
 {
   "version": 1,
   "skills": {
+    "connect-recommend": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "ddf136d2fdc3fb24d5b4b932ec60cb714e941ca8b624b5f3fe8888728e5b5563"
+    },
     "faceless-explainer": {
       "source": "heygen-com/hyperframes",
       "sourceType": "github",

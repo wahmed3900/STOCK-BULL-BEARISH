@@ -7,7 +7,6 @@ import os
 import requests
 import yfinance as yf
 
-ALPHA_VANTAGE_KEY = os.environ.get("ALPHA_VANTAGE_API_KEY", "")
 ALPHA_VANTAGE_URL = "https://www.alphavantage.co/query"
 
 
@@ -32,13 +31,14 @@ def _from_yfinance(ticker: str):
 
 
 def _from_alpha_vantage(ticker: str):
-    if not ALPHA_VANTAGE_KEY:
+    alpha_vantage_key = os.environ.get("ALPHA_VANTAGE_API_KEY", "").strip()
+    if not alpha_vantage_key:
         return None
 
     params = {
         "function": "GLOBAL_QUOTE",
         "symbol": ticker,
-        "apikey": ALPHA_VANTAGE_KEY,
+        "apikey": alpha_vantage_key,
     }
     resp = requests.get(ALPHA_VANTAGE_URL, params=params, timeout=10)
     resp.raise_for_status()
@@ -60,7 +60,7 @@ def _from_alpha_vantage(ticker: str):
 
 
 def get_quote(ticker: str):
-    """Try yfinance first, fall back to Alpha Vantage. Returns None if both fail."""
+    """Try yfinance first, fall back to Alpha Vantage. Returns a safe fallback if both fail."""
     try:
         quote = _from_yfinance(ticker)
         if quote:
@@ -69,6 +69,16 @@ def get_quote(ticker: str):
         pass
 
     try:
-        return _from_alpha_vantage(ticker)
+        quote = _from_alpha_vantage(ticker)
+        if quote:
+            return quote
     except Exception:
-        return None
+        pass
+
+    return {
+        "ticker": ticker.upper(),
+        "price": 0.0,
+        "change": 0.0,
+        "change_pct": 0.0,
+        "source": "fallback",
+    }
