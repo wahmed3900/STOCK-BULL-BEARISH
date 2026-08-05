@@ -90,4 +90,10 @@ Werkzeug==3.1.8
 yfinance==1.5.2
 zope.event==6.2
 zope.interface==8.5
+flask-limiter==3.5.0
+flask-cors==4.0.0
+flask-swagger-ui==4.11.1
+flask-wtf==1.1.1
+redis==5.0.1
+structlog==23.2.0
 EOF
