@@ -1,3 +1,4 @@
+cat > requirements.txt << 'EOF'
 annotated-types==0.8.0
 anyio==4.14.2
 astroid==4.0.4
@@ -89,3 +90,4 @@ Werkzeug==3.1.8
 yfinance==1.5.2
 zope.event==6.2
 zope.interface==8.5
+EOF
