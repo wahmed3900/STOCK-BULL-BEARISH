@@ -23,6 +23,7 @@ from flask_swagger_ui import get_swaggerui_blueprint
 from flask_wtf.csrf import CSRFProtect
 import redis
 from redis import Redis
+import stripe
 
 # Load environment variables
 load_dotenv()
@@ -77,8 +78,7 @@ class Config:
     MAX_WORKERS = int(os.environ.get('MAX_WORKERS', 4))
 
     # Streaming settings
-    STREAM_INTERVAL = int(os.environ.get('STREAM_INTERVAL', 5))  # seconds between updates
-    STREAM_CACHE_TTL = 60  # cache price for 1 minute to avoid repeated yfinance calls
+    STREAM_INTERVAL = int(os.environ.get('STREAM_INTERVAL', 5))
 
     @classmethod
     def validate(cls) -> None:
@@ -163,17 +163,14 @@ class HealthCheck:
 # =============================================================================
 
 def utc_iso() -> str:
-    """Return current UTC time in ISO 8601 format with 'Z' suffix."""
     return datetime.now(timezone.utc).isoformat() + "Z"
 
 
 def validate_symbol_format(symbol: str) -> bool:
-    """Check if symbol consists of 1‑10 uppercase letters."""
     return bool(re.match(r'^[A-Z]{1,10}$', symbol))
 
 
 def validate_interval(interval: str) -> bool:
-    """Check if interval is one of the supported yfinance intervals."""
     valid_intervals = [
         '1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h',
         '1d', '5d', '1wk', '1mo', '3mo'
@@ -182,7 +179,6 @@ def validate_interval(interval: str) -> bool:
 
 
 def safe_float(value: Any) -> Optional[float]:
-    """Convert value to float, return None on failure."""
     try:
         return float(value) if value is not None else None
     except (ValueError, TypeError):
@@ -190,7 +186,6 @@ def safe_float(value: Any) -> Optional[float]:
 
 
 def safe_int(value: Any) -> Optional[int]:
-    """Convert value to int, return None on failure."""
     try:
         return int(value) if value is not None else None
     except (ValueError, TypeError):
@@ -198,7 +193,6 @@ def safe_int(value: Any) -> Optional[int]:
 
 
 def convert_timestamps(records: List[Dict]) -> List[Dict]:
-    """Convert datetime objects in a list of dicts to ISO strings."""
     for record in records:
         for key, value in list(record.items()):
             if isinstance(value, (datetime, pd.Timestamp)):
@@ -210,7 +204,6 @@ def convert_timestamps(records: List[Dict]) -> List[Dict]:
 # =============================================================================
 
 class RedisCache:
-    """Hybrid Redis / in‑memory cache with TTL and max size limits."""
     def __init__(self, redis_url: Optional[str] = None, ttl: int = 3600, maxsize: int = 1000):
         self.ttl = ttl
         self.maxsize = maxsize
@@ -252,7 +245,6 @@ class RedisCache:
                 logger.error("redis_get_failed", key=key, error=str(e))
                 return None, CacheStatus.MISS
 
-        # In‑memory fallback
         if key in self._memory_cache:
             value, timestamp = self._memory_cache[key]
             if datetime.now(timezone.utc) - timestamp < timedelta(seconds=self.ttl):
@@ -268,7 +260,6 @@ class RedisCache:
                 self._client.setex(key, self.ttl, serialized)
                 return True
 
-            # Memory eviction
             if len(self._memory_cache) >= self.maxsize:
                 oldest = min(self._memory_cache.keys(), key=lambda k: self._memory_cache[k][1])
                 del self._memory_cache[oldest]
@@ -359,8 +350,10 @@ cache = RedisCache(
     maxsize=app_config.CACHE_MAXSIZE
 )
 
-# Thread pool for batch operations
 executor = ThreadPoolExecutor(max_workers=app_config.MAX_WORKERS)
+
+# Stripe setup
+stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
 
 # =============================================================================
 #                               Swagger / OpenAPI
@@ -426,7 +419,6 @@ except Exception as e:
 # =============================================================================
 
 def validate_ticker_sync(symbol: str) -> TickerInfo:
-    """Synchronously validate a single ticker symbol using yfinance."""
     if not validate_symbol_format(symbol):
         return TickerInfo(symbol=symbol, valid=False, error="Invalid format - use 1-10 uppercase letters")
 
@@ -508,7 +500,6 @@ def log_request(f):
 @app.route('/api/model', methods=['HEAD', 'GET'])
 @log_request
 def get_model():
-    """Get model information (required by UptimeRobot)."""
     tier = session.get('tier', 'free')
     return jsonify({
         "status": "active",
@@ -755,37 +746,29 @@ def health_check():
 
 
 # =============================================================================
-#                               Streaming Endpoint (NEW)
+#                               Streaming Endpoint
 # =============================================================================
 
 @app.route('/stream/<symbol>', methods=['GET', 'HEAD'])
 @limiter.limit("30 per minute")
 @log_request
 def stream_ticker(symbol):
-    """
-    Server‑Sent Events (SSE) endpoint that pushes price updates every few seconds.
-    Responds to HEAD requests with a 200 (no body) so UptimeRobot can monitor it.
-    """
     symbol = symbol.strip().upper()
     if not validate_symbol_format(symbol):
         return jsonify({'error': 'Invalid symbol format'}), 400
 
-    # For HEAD requests, just return 200 OK
     if request.method == 'HEAD':
         return '', 200
 
     def generate():
-        """Generator that yields SSE events."""
         last_price = None
         while True:
             try:
                 ticker = yf.Ticker(symbol)
-                # Fetch the latest 1‑minute data to get the most recent close
                 hist = ticker.history(period='1m', interval='1m')
                 if not hist.empty and 'Close' in hist.columns:
                     current_price = float(hist['Close'].iloc[-1])
                 else:
-                    # Fallback: try 1‑day data
                     hist = ticker.history(period='1d', interval='1m')
                     if not hist.empty and 'Close' in hist.columns:
                         current_price = float(hist['Close'].iloc[-1])
@@ -798,26 +781,74 @@ def stream_ticker(symbol):
                         'symbol': symbol,
                         'price': current_price,
                         'timestamp': utc_iso(),
-                        'change': None  # could compute change from previous if needed
+                        'change': None
                     }
                     yield f"data: {json.dumps(data)}\n\n"
                 else:
-                    # Send a keep‑alive ping every 10 seconds even if price hasn't changed
                     yield f": keepalive {utc_iso()}\n\n"
             except Exception as e:
                 logger.error("stream_error", symbol=symbol, error=str(e))
                 yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
                 break
 
-            # Wait for the configured interval
             time.sleep(app_config.STREAM_INTERVAL)
 
     headers = {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'X-Accel-Buffering': 'no'  # Disable buffering for nginx
+        'X-Accel-Buffering': 'no'
     }
     return Response(stream_with_context(generate()), headers=headers)
+
+# =============================================================================
+#                               Stripe Routes (NEW)
+# =============================================================================
+
+@app.route('/create-checkout-session', methods=['POST'])
+@require_auth
+def create_checkout_session():
+    try:
+        # Replace 'price_...' with your actual Price ID from Stripe Dashboard
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            mode='subscription',
+            line_items=[{
+                'price': 'price_...',  # ← IMPORTANT: Change this to your Price ID!
+                'quantity': 1,
+            }],
+            success_url=url_for('dashboard', _external=True) + '?session_id={CHECKOUT_SESSION_ID}',
+            cancel_url=url_for('dashboard', _external=True) + '?canceled=true',
+            client_reference_id=session.get('user_id'),
+        )
+        return redirect(checkout_session.url, code=303)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/stripe-webhook', methods=['POST'])
+def stripe_webhook():
+    payload = request.get_data(as_text=True)
+    sig_header = request.headers.get('Stripe-Signature')
+    webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, webhook_secret
+        )
+    except ValueError:
+        return '', 400
+    except stripe.error.SignatureVerificationError:
+        return '', 400
+
+    if event['type'] == 'checkout.session.completed':
+        session_data = event['data']['object']
+        user_id = session_data.get('client_reference_id')
+        # Update user tier in DB (you'll need to implement this)
+        # Example: db.users.update_one({'_id': ObjectId(user_id)}, {'$set': {'tier': 'pro'}})
+        pass
+    # Add handling for 'customer.subscription.deleted' if needed
+
+    return '', 200
 
 # =============================================================================
 #                               Web Routes
