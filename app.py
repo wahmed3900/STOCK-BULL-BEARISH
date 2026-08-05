@@ -928,3 +928,7 @@ if __name__ == '__main__':
             http_server.serve_forever()
         except ImportError:
             app.run(debug=False, host='0.0.0.0', port=port)
+if __name__ == "__main__":
+    # Cloud Run passes the port dynamically. Fallback to 8080 locally.
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
