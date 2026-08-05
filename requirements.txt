@@ -175,3 +175,9 @@ redis==8.1.0
 structlog==26.1.0   
 gunicorn==26.0.0
 echo "stripe>=8.0.0" 
+==> requirements.txt <==
+structlog==26.1.0   
+gunicorn==26.0.0
+echo "stripe>=8.0.0" 
+==> requirements.txt <==
+together>=1.0.0
