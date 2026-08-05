@@ -158,7 +158,6 @@ redis==8.1.0
 structlog==26.1.0   
 gunicorn==26.0.0
 
-/Users/nighatahmed/Documents/stock-dashboard/templates/app.py/dependenciesWTForms==3.2.2
 yfinance==1.5.2 
 flask-limiter==4.1.1
 flask-cors==6.0.5
@@ -176,8 +175,3 @@ redis==8.1.0
 structlog==26.1.0   
 gunicorn==26.0.0
 echo "stripe>=8.0.0" 
-
->>>>>>> b3dc25ca9842f6a5f77d4bb330739443217604da
-
-
-
