@@ -176,3 +176,4 @@ structlog==26.1.0
 gunicorn==26.0.0
 echo "stripe>=8.0.0" 
 echo "together>=1.0.0" 
+tail -n 3 
