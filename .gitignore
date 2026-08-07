@@ -51,3 +51,4 @@ htmlcov/
 *.save
 *.zip
 *.tar.gz
+.env
