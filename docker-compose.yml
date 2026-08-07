@@ -1,24 +1,44 @@
 version: '3.8'
+
 services:
-  mongo:
-    image: mongo:6.0
-    restart: unless-stopped
-    volumes:
-      - mongo-data:/data/db
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=production
+      - PORT=5000
+    env_file:
+      - .env
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - stock-network
+
+  mongodb:
+    image: mongo:latest
     ports:
       - "27017:27017"
-
-  web:
-    build: .
-    restart: unless-stopped
     environment:
-      - PORT=5000
-      - MONGODB_URI=mongodb://mongo:27017
-      - MONGODB_DB_NAME=stock_dashboard
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - stock-network
+
+  redis:
+    image: redis:alpine
     ports:
-      - "5001:5000"
-    depends_on:
-      - mongo
+      - "6379:6379"
+    networks:
+      - stock-network
+
+networks:
+  stock-network:
+    driver: bridge
 
 volumes:
-  mongo-data:
+  mongodb_data:

@@ -1,4 +1,3 @@
-cat > .gitignore << 'EOF'
 # Python
 __pycache__/
 *.pyc
@@ -52,30 +51,3 @@ htmlcov/
 *.save
 *.zip
 *.tar.gz
-.env.save
-requirements.txt.save
-stock_analyzer.py.save
-EOF
-.env
-venv/
-node_modules/
-__pycache__/
-*.pyc
-.DS_Store
-.env
-google-cloud-sdk/
-google-cloud-cli-*.tar.gz
-services/services/
-services/Mac/
-*.py#
-main
-.env.local
-app_log.txt
-.DS_Store
-*.save
-*.bash
-venv/
-__pycache__/
-*.log
-.DS_Store
-*.save

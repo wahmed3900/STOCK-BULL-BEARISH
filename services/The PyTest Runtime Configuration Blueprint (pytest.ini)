@@ -1,0 +1,9 @@
+ini[pytest]
+addopts = -v --tb=short --strict-markers
+
+markers =
+    market_behavior: Tests handling wild stock behaviors (spikes, halts).
+    security: Tests tracking HMAC signatures and firewalls.
+    network_failure: Tests asserting how the app survives when APIs crash.
+    database: Tests verifying live state isolation and automated drop cleanups.
+    rate_limit: Tests verifying high-concurrency 429 throttling blocks.

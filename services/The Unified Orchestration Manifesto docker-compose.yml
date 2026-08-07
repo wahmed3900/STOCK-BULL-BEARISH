@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # 1. Reverse Proxy Layer (Public Facing Gateway)
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: fin_nginx_proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+
+  # 2. Main HTTP Application API Layer
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: financial-pipeline-app:latest
+    container_name: fin_app_service
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - MONGO_URI=mongodb://root:secret_mongo_pass@mongodb:27017/prod_fin_db?authSource=admin
+      - REDIS_URL=redis://:secret_redis_pass@redis:6379/0
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # 3. Asynchronous Worker Layer (Executes the background tasks)
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: financial-pipeline-app:latest
+    container_name: fin_celery_worker
+    restart: unless-stopped
+    command: celery -A app.celery_app worker --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - MONGO_URI=mongodb://root:secret_mongo_pass@mongodb:27017/prod_fin_db?authSource=admin
+      - REDIS_URL=redis://:secret_redis_pass@redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # 4. State Persistence Database
+  mongodb:
+    image: mongo:6.0
+    container_name: fin_mongo_db
+    restart: always
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=secret_mongo_pass
+      - MONGO_INITDB_DATABASE=prod_fin_db
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # 5. High-Throughput Cache & Message Broker
+  redis:
+    image: redis:7.0-alpine
+    container_name: fin_redis_cache
+    restart: always
+    command: redis-server --requirepass secret_redis_pass
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "secret_redis_pass", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mongo_data:
+  redis_data:
