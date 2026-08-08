@@ -454,7 +454,7 @@ def validate_ticker_sync(symbol: str) -> TickerInfo:
         return TickerInfo(symbol=symbol, valid=False, error=str(e))
 
 # =============================================================================
-#                               Decorators
+#                               De    corators
 # =============================================================================
 
 def require_auth(f):
@@ -928,11 +928,3 @@ if __name__ == '__main__':
             http_server.serve_forever()
         except ImportError:
             app.run(debug=False, host='0.0.0.0', port=port)
-<<<<<<< HEAD
-
-=======
-if __name__ == "__main__":
-    # Cloud Run passes the port dynamically. Fallback to 8080 locally.
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
->>>>>>> c63dbabad258532670ee57a4be9936c601db8a26
