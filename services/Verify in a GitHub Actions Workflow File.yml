@@ -1,3 +1,7 @@
+name: Test Variables
+
+on:
+  workflow_dispatch:
 
 jobs:
   verify-vars:
