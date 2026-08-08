@@ -1,9 +1,9 @@
-Add import stripe
 import os
 import re
 import json
 import logging
 import time
+import pandas as pd
 from functools import wraps
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, Tuple, List
@@ -454,7 +454,7 @@ def validate_ticker_sync(symbol: str) -> TickerInfo:
         return TickerInfo(symbol=symbol, valid=False, error=str(e))
 
 # =============================================================================
-#                               De    corators
+#                               Decorators
 # =============================================================================
 
 def require_auth(f):
