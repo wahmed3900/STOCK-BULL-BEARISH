@@ -7,10 +7,14 @@ import io
 import os
 import time
 import logging
+import sqlite3
+import hashlib
 import requests
 import yfinance as yf
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, session, render_template
+
+from src.secret_manager import get_api_key, get_secret
 
 # Fix encoding for Windows console
 if sys.platform == 'win32':
@@ -23,15 +27,36 @@ load_dotenv()
 #                               CONFIGURATION
 # =============================================================================
 
+def resolve_secret(env_name: str, secret_name: str | None = None):
+    """Return an environment variable, or fall back to Google Secret Manager."""
+    secret_value = os.environ.get(env_name)
+    if secret_value:
+        return secret_value
+
+    if secret_name:
+        if secret_name in {"alpha_vantage", "polygon", "finnhub", "docker"}:
+            try:
+                return get_api_key(secret_name)
+            except Exception:
+                return None
+        try:
+            return get_secret(secret_name)
+        except Exception:
+            return None
+
+    return None
+
+
 class Config:
     """Application configuration"""
     DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     ENV = os.environ.get('FLASK_ENV', 'development')
     PORT = int(os.environ.get('PORT', 5000))
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
-    
+
     # OpenRouter API Configuration
-    OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+    OPENROUTER_API_KEY = resolve_secret("OPENROUTER_API_KEY", "openrouter-api-key")
+    ALPHA_VANTAGE_API_KEY = resolve_secret("ALPHA_VANTAGE_API_KEY", "alpha-vantage-key")
     
     # Fallback model list
     PREFERRED_MODELS = [
@@ -45,8 +70,9 @@ class Config:
 #                               INITIALIZE FLASK APP
 # =============================================================================
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder="templates")
 app.config.from_object(Config)
+app.secret_key = app.config.get("SECRET_KEY", "dev-secret-key-change-in-production")
 
 # =============================================================================
 #                               LOGGING
@@ -57,6 +83,64 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+FREE_TIER_LIMIT = 3
+
+
+def get_db():
+    """Return a SQLite connection for local user and plan persistence."""
+    db_path = app.config.get("DATABASE_PATH")
+    if not db_path:
+        db_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
+        os.makedirs(db_dir, exist_ok=True)
+        db_path = os.path.join(db_dir, "subscriptions.sqlite3")
+        app.config["DATABASE_PATH"] = db_path
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    """Create the local database tables needed for auth and subscriptions."""
+    conn = get_db()
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            plan TEXT NOT NULL DEFAULT 'free',
+            stripe_customer_id TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def _hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def get_current_user():
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, username, plan, stripe_customer_id FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def is_pro_user(user):
+    return bool(user and user.get("plan") == "pro")
+
 
 # =============================================================================
 #                         STOCK ANALYSIS FUNCTIONS
@@ -187,20 +271,14 @@ def analyze_stock(ticker):
 
 @app.route('/')
 def home():
-    """Home page endpoint"""
-    return jsonify({
-        'message': 'Stock Analysis API',
-        'version': '1.0.0',
-        'endpoints': {
-            '/status': 'Server status',
-            '/health': 'Health check',
-            '/analyze/<ticker>': 'Analyze a stock (GET)',
-            '/analyze': 'Analyze a stock (POST with JSON)',
-            '/analyze/batch': 'Analyze multiple stocks (POST)'
-        },
-        'environment': Config.ENV,
-        'status': 'running'
-    })
+    """Serve the SaaS landing page for the stock dashboard."""
+    return render_template('landing.html', app_name='BullBear AI', plan='free')
+
+
+@app.route('/pricing')
+def pricing_page():
+    """Render the pricing page for the subscription product."""
+    return render_template('pricing.html', plan='free')
 
 @app.route('/status')
 def status():
@@ -263,33 +341,169 @@ def analyze_stock_post():
 
 @app.route('/analyze/batch', methods=['POST'])
 def analyze_batch():
-    """Analyze multiple stocks at once"""
-    data = request.get_json()
-    
+    """Analyze multiple stocks at once."""
+    data = request.get_json(silent=True) or {}
+
     if not data or 'tickers' not in data:
         return jsonify({
             'error': 'Missing tickers',
             'message': 'Please provide tickers in JSON: {"tickers": ["AAPL", "GOOGL"]}'
         }), 400
-    
+
+    user = get_current_user()
+    tickers = [ticker.upper() for ticker in data['tickers']]
+    if not is_pro_user(user) and len(tickers) > FREE_TIER_LIMIT:
+        return jsonify({
+            'error': 'plan_limit',
+            'message': f'Your free plan allows up to {FREE_TIER_LIMIT} tickers per batch. Upgrade to Pro for unlimited analysis.'
+        }), 403
+
     results = []
     errors = []
-    
-    for ticker in data['tickers']:
-        ticker = ticker.upper()
+
+    for ticker in tickers:
         result, error = analyze_stock(ticker)
         if error:
             errors.append({'ticker': ticker, 'error': error})
         else:
             results.append(result)
-    
+
     return jsonify({
         'results': results,
         'errors': errors,
         'total': len(results) + len(errors),
         'successful': len(results),
-        'failed': len(errors)
+        'failed': len(errors),
+        'plan': user['plan'] if user else 'free'
     })
+
+
+@app.route('/auth/register', methods=['POST'])
+def register_user():
+    """Create a local user account and log them in."""
+    data = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip().lower()
+    password = data.get('password') or ''
+
+    if not username or len(password) < 6:
+        return jsonify({
+            'error': 'invalid_request',
+            'message': 'Provide a username and a password with at least 6 characters.'
+        }), 400
+
+    conn = get_db()
+    try:
+        cursor = conn.execute(
+            'INSERT INTO users (username, password_hash, plan) VALUES (?, ?, ?)',
+            (username, _hash_password(password), 'free'),
+        )
+        conn.commit()
+        user_id = cursor.lastrowid
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({
+            'error': 'username_taken',
+            'message': 'That username is already registered.'
+        }), 409
+
+    conn.close()
+    session['user_id'] = user_id
+    return jsonify({
+        'message': 'Account created successfully.',
+        'user': {'id': user_id, 'username': username, 'plan': 'free'}
+    }), 201
+
+
+@app.route('/auth/login', methods=['POST'])
+def login_user():
+    """Authenticate a user and store their session."""
+    data = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip().lower()
+    password = data.get('password') or ''
+
+    conn = get_db()
+    row = conn.execute(
+        'SELECT id, username, plan, password_hash FROM users WHERE username = ?',
+        (username,),
+    ).fetchone()
+    conn.close()
+
+    if not row or row['password_hash'] != _hash_password(password):
+        return jsonify({
+            'error': 'invalid_credentials',
+            'message': 'Incorrect username or password.'
+        }), 401
+
+    session['user_id'] = row['id']
+    return jsonify({
+        'message': 'Logged in successfully.',
+        'user': {'id': row['id'], 'username': row['username'], 'plan': row['plan']}
+    })
+
+
+@app.route('/auth/logout', methods=['POST'])
+def logout_user():
+    session.pop('user_id', None)
+    return jsonify({'message': 'Logged out successfully.'})
+
+
+@app.route('/auth/me')
+def current_user():
+    user = get_current_user()
+    if not user:
+        return jsonify({'authenticated': False}), 401
+    return jsonify({'authenticated': True, 'user': user})
+
+
+@app.route('/billing/checkout', methods=['POST'])
+def create_checkout():
+    """Create a Stripe-style checkout session or fall back to a demo upgrade route."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'unauthenticated', 'message': 'Please log in first.'}), 401
+
+    if user['plan'] == 'pro':
+        return jsonify({'message': 'You already have a Pro subscription.', 'plan': 'pro'})
+
+    stripe_secret_key = app.config.get('STRIPE_SECRET_KEY')
+    stripe_price_id = app.config.get('STRIPE_PRICE_ID')
+
+    if stripe_secret_key and stripe_price_id:
+        try:
+            import stripe
+
+            stripe.api_key = stripe_secret_key
+            session = stripe.checkout.Session.create(
+                mode='subscription',
+                line_items=[{'price': stripe_price_id, 'quantity': 1}],
+                success_url=app.config.get('STRIPE_SUCCESS_URL', 'http://localhost:5000/billing/success'),
+                cancel_url=app.config.get('STRIPE_CANCEL_URL', 'http://localhost:5000/billing/cancel'),
+                client_reference_id=str(user['id']),
+            )
+            return jsonify({'checkout_url': session.url, 'plan': 'pro'})
+        except Exception as exc:
+            logger.warning('Stripe checkout failed: %s', exc)
+
+    return jsonify({
+        'message': 'Stripe is not configured yet. Demo mode is active.',
+        'plan': 'pro',
+        'confirm_url': '/billing/confirm-demo'
+    })
+
+
+@app.route('/billing/confirm-demo', methods=['POST'])
+def confirm_demo_checkout():
+    """Upgrade the signed-in user to Pro in demo mode."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'unauthenticated', 'message': 'Please log in first.'}), 401
+
+    conn = get_db()
+    conn.execute("UPDATE users SET plan = ? WHERE id = ?", ('pro', user['id']))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Demo Pro upgrade completed.', 'plan': 'pro'})
+
 
 # =============================================================================
 #                               ERROR HANDLERS
@@ -360,6 +574,7 @@ if __name__ == '__main__':
         
         # Track server start time
         app.config['START_TIME'] = time.time()
+        init_db()
         
         # Check API key
         if not Config.OPENROUTER_API_KEY:

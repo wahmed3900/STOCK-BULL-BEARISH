@@ -81,21 +81,67 @@ stock-dashboard/
 └── .env.example
 ```
 
-## Deploy (Render / Heroku)
+## Deploy (Render / Heroku / Google Cloud)
 
-Quick notes to deploy this app to Render or Heroku.
+Quick notes to deploy this app to Render, Heroku, or Google Cloud.
 
 - Ensure required environment variables are set before deploy:
-  - `OPENROUTER_API_KEY` — enables AI sentiment
-  - `ALPHA_VANTAGE_API_KEY` — optional fallback for quotes
+  - `OPENROUTER_API_KEY` — enables AI sentiment. You can also store this in Google Secret Manager as `openrouter-api-key`.
+  - `ALPHA_VANTAGE_API_KEY` — optional fallback for quotes. You can also store this in Google Secret Manager as `alpha-vantage-key`.
   - `MONGODB_URI` and `MONGODB_DB_NAME` — production MongoDB (Atlas recommended)
   - `TOGETHER_API_KEY` — if you use together.ai streaming endpoints
   - `SECRET_KEY` — Flask secret for sessions
+  - `GOOGLE_CLOUD_PROJECT` — required if you want the app to load secrets from Google Secret Manager
+
+### Google Secret Manager
+
+If you are deploying to Google Cloud or want secret-backed config:
+
+```bash
+pip install google-cloud-secret-manager
+```
+
+Create secrets in Google Secret Manager with these names:
+- `openrouter-api-key`
+- `alpha-vantage-key`
+
+Then set:
+
+```bash
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+```
+
+The app will first check environment variables and then fall back to Google Secret Manager automatically.
+
+### Render quick deploy
+
+1. Create a new Web Service in Render and link the GitHub repo.
+2. Set the Environment to `Python`, and in the "Start Command" use the Procfile or set:
+
+```
+gunicorn src.app:app --log-file -
+```
+
+3. Add environment variables in the Render dashboard (same names as above).
+
+### Google Cloud Run quick deploy
+
+1. Build and deploy the app with Cloud Run or App Engine.
+2. Set the same environment variables in Cloud Run.
+3. Grant the service account access to Secret Manager:
+
+```bash
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member=serviceAccount:YOUR_SERVICE_ACCOUNT \
+  --role=roles/secretmanager.secretAccessor
+```
+
+4. Set `GOOGLE_CLOUD_PROJECT` so the app can resolve secrets automatically.
 
 - A `Procfile` is included and uses Gunicorn to run the app in production:
 
 ```
-web: gunicorn app:app --log-file -
+web: gunicorn src.app:app --log-file -
 ```
 
 - Heroku quick deploy
@@ -112,7 +158,7 @@ git push heroku main
 2. Set the Environment to `Python`, and in the "Start Command" use the Procfile or set:
 
 ```
-gunicorn app:app --log-file -
+gunicorn src.app:app --log-file -
 ```
 
 3. Add environment variables in the Render dashboard (same names as above).
@@ -121,7 +167,7 @@ gunicorn app:app --log-file -
 
 ```
 pip install -r requirements.txt
-PORT=5001 gunicorn app:app --log-file -
+PORT=5001 gunicorn src.app:app --log-file -
 ```
 
 Notes:
