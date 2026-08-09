@@ -6,4 +6,3 @@ yfinance>=0.2.40
 pymongo>=4.8.0
 certifi
 together
-runtime.txt
