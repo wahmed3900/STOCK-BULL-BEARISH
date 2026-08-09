@@ -1,6 +1,6 @@
 transformers>=4.38.0
 torch>=2.2.0
-pip install 
+pip 
 flask==3.0.2
 flask-limiter==3.7.0
 flask-cors==4.0.0
