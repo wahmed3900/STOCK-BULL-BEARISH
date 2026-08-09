@@ -1,10 +1,4 @@
-gevent
-gunicorn
-requests==2.33.1
-yfinance>=0.2.40
-pymongo>=4.8.0
-certifi
-together
+Flask==3.1.3
 gevent
 gunicorn
 requests==2.33.1
