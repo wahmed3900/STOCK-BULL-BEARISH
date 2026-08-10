@@ -6,3 +6,5 @@ yfinance>=0.2.40
 pymongo>=4.8.0
 certifi
 
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
