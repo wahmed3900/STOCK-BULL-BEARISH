@@ -31,3 +31,16 @@ def chart():
     except Exception as e:
         logger.error("chart_error", symbol=symbol, error=str(e))
         return jsonify({'error': 'Failed to fetch chart data'}), 500
+if __name__ == '__main__':
+    app.config['START_TIME'] = time.time()
+    port = int(os.environ.get('PORT', 5000))
+    if app_config.DEBUG:
+        app.run(debug=True, host='0.0.0.0', port=port)
+    else:
+        try:
+            from gevent.pywsgi import WSGIServer
+            logger.info("starting_gevent_server", port=port, environment=env)
+            http_server = WSGIServer(('0.0.0.0', port), app)
+            http_server.serve_forever()
+        except ImportError:
+            app.run(debug=False, host='0.0.0.0', port=port)
