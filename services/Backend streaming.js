@@ -1,37 +1,28 @@
-import express from "express";
-import Together from "together-ai";
+from flask import Flask, Response, request
+from together import Together
 
-const app = express();
-app.use(express.json());
+app = Flask(__name__)
 
-const together = new Together({
-  apiKey: process.env.TOGETHER_API_KEY
-});
+client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
 
-app.post("/stream", async (req, res) => {
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
+@app.route("/stream", methods=["POST"])
+def stream():
+    messages = request.json.get("messages", [])
 
-  const { messages } = req.body;
+    def generate():
+        stream = client.chat.completions.create(
+            model="meta-llama/Meta-Llama-3.1-70B-Instruct",
+            messages=messages,
+            stream=True
+        )
 
-  const stream = await together.chat.completions.create({
-    model: "meta-llama/Meta-Llama-3.1-70B-Instruct",
-    messages,
-    stream: true
-  });
+        try:
+            for chunk in stream:
+                token = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                yield f"data: {token}\n\n"
+        except Exception as e:
+            yield f"data: [STREAM ERROR] {str(e)}\n\n"
 
-  try {
-    for await (const chunk of stream) {
-      const token = chunk?.choices?.[0]?.delta?.content || "";
-      res.write(`data: ${token}\n\n`);
-    }
-  } catch (err) {
-    res.write(`data: [STREAM ERROR] ${err.message}\n\n`);
-  }
+        yield "data: [DONE]\n\n"
 
-  res.write("data: [DONE]\n\n");
-  res.end();
-});
-
-app.listen(3000, () => console.log("Streaming backend running on port 3000"));
+    return Response(generate(), mimetype="text/event-stream")
