@@ -14,7 +14,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -23,7 +23,7 @@ jobs:
         run: echo "No tests configured"
 
       - name: Trigger Render deploy
-        if: secrets.RENDER_API_KEY != '' && secrets.RENDER_SERVICE_ID != ''
+        if: ${{ secrets.RENDER_API_KEY != '' && secrets.RENDER_SERVICE_ID != '' }}
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
@@ -35,7 +35,7 @@ jobs:
             -d '{"clearCache":true}' && echo "Render deploy triggered"
 
       - name: Deploy to Heroku
-        if: secrets.HEROKU_API_KEY != '' && secrets.HEROKU_APP_NAME != ''
+        if: ${{ secrets.HEROKU_API_KEY != '' && secrets.HEROKU_APP_NAME != '' }}
         uses: akhileshns/heroku-deploy@v3.12.12
         with:
           heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
