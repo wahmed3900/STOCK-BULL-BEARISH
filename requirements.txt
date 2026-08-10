@@ -18,3 +18,4 @@ redis==5.0.3
 
 stripe==10.8.0
 google-genai==0.3.0
+gevent>=24.11.1
