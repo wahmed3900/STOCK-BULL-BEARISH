@@ -4,7 +4,7 @@ gunicorn
 requests==2.33.1
 yfinance>=0.2.40
 pymongo>=4.8.0
+google-genai>=0.1.1
+redis>=5.0.0
 certifi
-
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+python-dotenv
