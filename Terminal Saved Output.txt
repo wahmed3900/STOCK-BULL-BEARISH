@@ -1,0 +1,48 @@
+Last login: Sat Aug  1 09:25:37 on ttys000
+nighatahmed@Nighats-MacBook-Air ~ % Cd stock-bull-bearish/
+/usr/bin/Cd: line 4: cd: stock-bull-bearish/: No such file or directory
+nighatahmed@Nighats-MacBook-Air ~ %  stock-bull-bearish
+zsh: command not found: stock-bull-bearish
+nighatahmed@Nighats-MacBook-Air ~ %  stock-bull-bearish/
+zsh: no such file or directory: stock-bull-bearish/
+nighatahmed@Nighats-MacBook-Air ~ % nano requirements.txt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  UW PICO 5.09                 File: requirements.txt                 Modified  
+
+Flask==3.1.3
+gevent
+gunicorn
+requests==2.33.1
+yfinance>=0.2.40
+pymongo>=4.8.0
+certifi
+
+
+
+
+
+
+
+
+
+
+
+
+
+^G Get Help  ^O WriteOut  ^R Read File ^Y Prev Pg   ^K Cut Text  ^C Cur Pos   
+^X Exit      ^J Justify   ^W Where is  ^V Next Pg   ^U UnCut Text^T To Spell  
