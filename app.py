@@ -24,6 +24,7 @@ from flask_wtf.csrf import CSRFProtect
 import redis
 from redis import Redis
 import stripe
+from google import genai
 
 # Load environment variables
 load_dotenv()
@@ -46,6 +47,10 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY')
     if not SECRET_KEY:
         raise ValueError("SECRET_KEY environment variable is required")
+
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')  # Added for GenAI
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY environment variable is required")
 
     DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     TESTING = os.environ.get('FLASK_TESTING', 'False').lower() == 'true'
@@ -85,18 +90,15 @@ class Config:
         if cls.REDIS_URL and not cls.REDIS_URL.startswith(('redis://', 'rediss://', 'memory://')):
             raise ValueError("Invalid REDIS_URL format. Must start with redis://, rediss://, or memory://")
 
-
 class DevelopmentConfig(Config):
     DEBUG = True
     RATELIMIT_DEFAULT = "100 per minute"
     SESSION_COOKIE_SECURE = False
 
-
 class ProductionConfig(Config):
     DEBUG = False
     RATELIMIT_DEFAULT = "200 per day;50 per hour"
     SESSION_COOKIE_SECURE = True
-
 
 class TestingConfig(Config):
     TESTING = True
@@ -112,7 +114,6 @@ class UserTier(Enum):
     PREMIUM = "premium"
     ENTERPRISE = "enterprise"
 
-
 class MarketPeriod(Enum):
     DAY = "1d"
     WEEK = "5d"
@@ -124,12 +125,10 @@ class MarketPeriod(Enum):
     FIVE_YEAR = "5y"
     MAX = "max"
 
-
 class CacheStatus(Enum):
     HIT = "hit"
     MISS = "miss"
     STALE = "stale"
-
 
 @dataclass
 class TickerInfo:
@@ -149,7 +148,6 @@ class TickerInfo:
     def to_dict(self) -> Dict[str, Any]:
         return {k: v for k, v in asdict(self).items() if v is not None}
 
-
 @dataclass
 class HealthCheck:
     status: str
@@ -165,10 +163,8 @@ class HealthCheck:
 def utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat() + "Z"
 
-
 def validate_symbol_format(symbol: str) -> bool:
     return bool(re.match(r'^[A-Z]{1,10}$', symbol))
-
 
 def validate_interval(interval: str) -> bool:
     valid_intervals = [
@@ -177,20 +173,17 @@ def validate_interval(interval: str) -> bool:
     ]
     return interval in valid_intervals
 
-
 def safe_float(value: Any) -> Optional[float]:
     try:
         return float(value) if value is not None else None
     except (ValueError, TypeError):
         return None
 
-
 def safe_int(value: Any) -> Optional[int]:
     try:
         return int(value) if value is not None else None
     except (ValueError, TypeError):
         return None
-
 
 def convert_timestamps(records: List[Dict]) -> List[Dict]:
     for record in records:
@@ -318,6 +311,14 @@ CORS(app, resources={
 
 csrf = CSRFProtect(app)
 
+# Configure GenAI
+try:
+    genai_client = genai.Client(api_key=app_config.GEMINI_API_KEY)
+    logger.info("genai_configured")
+except Exception as e:
+    logger.error("genai_init_error", error=str(e))
+    genai_client = None
+
 # Logging setup
 def setup_logging():
     log_level = getattr(logging, app_config.LOG_LEVEL.upper())
@@ -366,9 +367,9 @@ def swagger_spec():
     spec = {
         "openapi": "3.0.0",
         "info": {
-            "title": "Stock Validator API",
+            "title": "Stock Validator API with GenAI",
             "version": Config.API_VERSION,
-            "description": "Stock ticker validation and market data API",
+            "description": "Stock ticker validation, market data, and GenAI analysis API",
         },
         "paths": {
             "/api/model": {"get": {"summary": "Get model information"}},
@@ -394,9 +395,25 @@ def swagger_spec():
                     }
                 }
             },
+            "/api/genai/analyze": {  # Added GenAI route to Swagger
+                "post": {
+                    "summary": "Analyze text with GenAI",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"prompt": {"type": "string"}}
+                                }
+                            }
+                        }
+                    }
+                }
+            },
             "/stream/{symbol}": {
                 "get": {
-                    "summary": "Stream real‑time price updates for a symbol",
+                    "summary": "Stream real-time price updates for a symbol",
                     "parameters": [{"name": "symbol", "in": "path", "required": True, "schema": {"type": "string"}}]
                 }
             }
@@ -408,11 +425,92 @@ try:
     swaggerui_blueprint = get_swaggerui_blueprint(
         SWAGGER_URL,
         '/static/swagger.json',
-        config={'app_name': "Stock Validator API"}
+        config={'app_name': "Stock Validator API with GenAI"}
     )
     app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 except Exception as e:
     logger.warning("swagger_ui_failed", error=str(e))
+
+# =============================================================================
+#                               GenAI Routes (NEW)
+# =============================================================================
+
+@app.route('/api/genai/analyze', methods=['POST'])
+@limiter.limit("10 per minute")
+def analyze_with_genai():
+    if genai_client is None:
+        return jsonify({'error': 'GenAI not configured'}), 500
+
+    data = request.get_json()
+    prompt = data.get('prompt')
+    if not prompt:
+        return jsonify({'error': 'No prompt provided'}), 400
+
+    try:
+        response = genai_client.models.generate_content(
+            model='gemini-3.6-flash',
+            contents=prompt,
+        )
+        return jsonify({
+            'analysis': response.text,
+            'timestamp': utc_iso()
+        }), 200
+    except Exception as e:
+        logger.error("genai_error", error=str(e))
+        return jsonify({'error': 'Failed to analyze with GenAI'}), 500
+
+
+@app.route('/api/analyze/<ticker>', methods=['GET'])
+@limiter.limit("20 per minute")
+def analyze_ticker(ticker):
+    symbol = ticker.strip().upper()
+    if not validate_symbol_format(symbol):
+        return jsonify({'status': 'error', 'message': 'Invalid ticker format'}), 400
+
+    if genai_client is None:
+        return jsonify({'status': 'error', 'message': 'GenAI not configured'}), 500
+
+    try:
+        prompt = (
+            f"Run a concise market and sentiment analysis for ticker {symbol}. "
+            "Return key risks, catalysts, and an overall bull/bear leaning."
+        )
+        response = genai_client.models.generate_content(
+            model='gemini-3.6-flash',
+            contents=prompt,
+        )
+        return jsonify({
+            'ticker': symbol,
+            'status': 'success',
+            'analysis': response.text,
+            'timestamp': utc_iso()
+        }), 200
+    except Exception as e:
+        logger.error("analyze_ticker_error", symbol=symbol, error=str(e))
+        return jsonify({'status': 'error', 'message': 'Failed to analyze ticker'}), 500
+
+# =============================================================================
+#                               Root Route
+# =============================================================================
+
+@app.route('/', methods=['GET'])
+def home():
+    return render_template('index.html')
+
+
+@app.route('/api', methods=['GET'])
+def api_overview():
+    return jsonify({
+        "message": "Welcome to the Stock Validator API with GenAI!",
+        "endpoints": {
+            "health": "/api/health",
+            "validate_ticker": "/api/validate-ticker?symbol=AAPL",
+            "analyze_ticker": "/api/analyze/AAPL",
+            "genai_analyze": "/api/genai/analyze (POST)",
+            "stream_ticker": "/stream/AAPL",
+            "swagger_docs": "/api/docs"
+        }
+    })
 
 # =============================================================================
 #                               Ticker Validation
@@ -465,7 +563,6 @@ def require_auth(f):
         return f(*args, **kwargs)
     return decorated
 
-
 def require_premium(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -474,7 +571,6 @@ def require_premium(f):
             return jsonify({'error': 'Premium feature - upgrade required'}), 403
         return f(*args, **kwargs)
     return decorated
-
 
 def log_request(f):
     @wraps(f)
@@ -503,7 +599,7 @@ def get_model():
     tier = session.get('tier', 'free')
     return jsonify({
         "status": "active",
-        "model": "stock_validator",
+        "model": "stock_validator_with_genai",
         "version": Config.API_VERSION,
         "timestamp": utc_iso(),
         "features": {
@@ -512,16 +608,17 @@ def get_model():
             "batch_validation": True,
             "historical_data": tier in ['premium', 'enterprise'],
             "async_validation": True,
-            "streaming": True
+            "streaming": True,
+            "genai_analysis": True  # Added GenAI feature
         },
         "rate_limits": {
             "default": Config.RATELIMIT_DEFAULT,
             "validate_ticker": "10 per minute",
             "batch_validate": "2 per minute",
-            "market_data": "30 per minute"
+            "market_data": "30 per minute",
+            "genai_analyze": "10 per minute"  # Added GenAI rate limit
         }
     }), 200
-
 
 @app.route('/api/validate-ticker', methods=['GET', 'HEAD'])
 @limiter.limit("10 per minute")
@@ -534,7 +631,6 @@ def validate_ticker():
     response = result.to_dict()
     response['cached'] = result.cached
     return jsonify(response), 200 if result.valid else 404
-
 
 @app.route('/api/batch-validate', methods=['POST'])
 @limiter.limit("2 per minute")
@@ -558,7 +654,6 @@ def batch_validate():
         'cached_count': sum(1 for r in results if r.cached),
         'timestamp': utc_iso()
     }), 200
-
 
 @app.route('/api/search-tickers', methods=['GET', 'HEAD'])
 @limiter.limit("10 per minute")
@@ -607,7 +702,6 @@ def search_tickers():
         'cached': False,
         'timestamp': utc_iso()
     }), 200
-
 
 @app.route('/api/market-data', methods=['GET', 'HEAD'])
 @limiter.limit("30 per minute")
@@ -665,7 +759,6 @@ def get_market_data():
         logger.error("market_data_error", symbol=symbol, error=str(e))
         return jsonify({'error': 'Failed to fetch market data'}), 500
 
-
 @app.route('/api/ticker-info', methods=['GET', 'HEAD'])
 @limiter.limit("30 per minute")
 @log_request
@@ -703,7 +796,6 @@ def get_ticker_info():
         logger.error("ticker_info_error", symbol=symbol, error=str(e))
         return jsonify(result.to_dict()), 200
 
-
 @app.route('/api/cache/clear', methods=['POST'])
 @require_auth
 @require_premium
@@ -715,7 +807,6 @@ def clear_cache():
     except Exception as e:
         logger.error("cache_clear_error", error=str(e))
         return jsonify({'error': 'Failed to clear cache'}), 500
-
 
 @app.route('/api/health', methods=['GET', 'HEAD'])
 @log_request
@@ -735,15 +826,15 @@ def health_check():
 
     services['cache'] = 'healthy'
     services['ratelimiter'] = 'healthy'
+    services['genai'] = 'healthy' if genai_client is not None else 'unhealthy'
 
     return jsonify({
-        'status': 'healthy' if healthy else 'degraded',
+        'status': 'healthy' if healthy and genai_client is not None else 'degraded',
         'timestamp': utc_iso(),
         'services': services,
         'version': Config.API_VERSION,
         'details': {'environment': env}
-    }), 200 if healthy else 503
-
+    }), 200 if healthy and genai_client is not None else 503
 
 # =============================================================================
 #                               Streaming Endpoint
@@ -801,19 +892,18 @@ def stream_ticker(symbol):
     return Response(stream_with_context(generate()), headers=headers)
 
 # =============================================================================
-#                               Stripe Routes (NEW)
+#                               Stripe Routes
 # =============================================================================
 
 @app.route('/create-checkout-session', methods=['POST'])
 @require_auth
 def create_checkout_session():
     try:
-        # Replace 'price_...' with your actual Price ID from Stripe Dashboard
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             mode='subscription',
             line_items=[{
-                'price': 'price_...',  # ← IMPORTANT: Change this to your Price ID!
+                'price': 'price_...',  # Replace with your Stripe Price ID
                 'quantity': 1,
             }],
             success_url=url_for('dashboard', _external=True) + '?session_id={CHECKOUT_SESSION_ID}',
@@ -823,7 +913,6 @@ def create_checkout_session():
         return redirect(checkout_session.url, code=303)
     except Exception as e:
         return jsonify({'error': str(e)}), 400
-
 
 @app.route('/stripe-webhook', methods=['POST'])
 def stripe_webhook():
@@ -843,10 +932,8 @@ def stripe_webhook():
     if event['type'] == 'checkout.session.completed':
         session_data = event['data']['object']
         user_id = session_data.get('client_reference_id')
-        # Update user tier in DB (you'll need to implement this)
-        # Example: db.users.update_one({'_id': ObjectId(user_id)}, {'$set': {'tier': 'pro'}})
+        # Update user tier in DB (implement this)
         pass
-    # Add handling for 'customer.subscription.deleted' if needed
 
     return '', 200
 
@@ -854,24 +941,9 @@ def stripe_webhook():
 #                               Web Routes
 # =============================================================================
 
-@app.route('/', methods=['GET', 'HEAD'])
+@app.route('/dashboard', methods=['GET'])
 def dashboard():
-    tier = session.get('tier', UserTier.FREE.value)
-    return render_template('base.html',
-                         tier=tier,
-                         user_name=session.get('user_name', 'Guest'),
-                         user_id=session.get('user_id'),
-                         year=datetime.now(timezone.utc).year,
-                         features={
-                             'premium': tier in ['premium', 'enterprise'],
-                             'can_search': True,
-                             'can_validate': True,
-                             'can_batch': True,
-                             'can_cache_clear': tier in ['premium', 'enterprise'],
-                             'can_stream': True
-                         },
-                         version=Config.API_VERSION)
-
+    return render_template('index.html')
 
 @app.route('/demo_login')
 def demo_login():
@@ -884,7 +956,6 @@ def demo_login():
     logger.info("demo_login", user_id='demo_user', tier='premium')
     flash('Logged in as Demo User (Premium Tier)', 'success')
     return redirect(url_for('dashboard'))
-
 
 @app.route('/logout')
 def logout():
@@ -900,11 +971,9 @@ def logout():
 def not_found(e):
     return jsonify({'error': 'Not found'}), 404
 
-
 @app.errorhandler(429)
 def ratelimit_handler(e):
     return jsonify({'error': 'Rate limit exceeded', 'retry_after': 60}), 429
-
 
 @app.errorhandler(500)
 def server_error(e):

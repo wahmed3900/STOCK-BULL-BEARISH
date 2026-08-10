@@ -1,61 +1,123 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: #f3f6fb;
+            color: #101828;
+        }
 
-{% block content %}
+        .page {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 32px 20px 48px;
+        }
 
-<div class="dashboard">
+        .panel {
+            background: #ffffff;
+            border: 1px solid #e4e7ec;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(16, 24, 40, 0.06);
+        }
 
-    <section class="search-box">
-        <h2>🔍 Analyze a Stock</h2>
+        .title {
+            margin: 0 0 8px;
+            font-size: 28px;
+        }
 
-        <form action="/analyze" method="POST">
-            <input
-                type="text"
-                name="ticker"
-                placeholder="Enter stock symbol (AAPL, TSLA, NVDA)"
-                required
-            >
-            <button type="submit">Analyze</button>
-        </form>
+        .subtitle {
+            margin: 0 0 18px;
+            color: #475467;
+        }
 
-        <button id="helpDialogButton" type="button" class="info-btn">
-            Need help?
-        </button>
+        .row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
 
-        <dialog id="simpleDialog" class="simple-dialog">
-            <div class="dialog-header">
-                <h3>How to use the dashboard</h3>
-                <button type="button" data-dialog-close class="dialog-close">&times;</button>
+        .ticker-input {
+            flex: 1;
+            min-width: 220px;
+            font-size: 16px;
+            border: 1px solid #d0d5dd;
+            border-radius: 10px;
+            padding: 12px 14px;
+        }
+
+        .analyze-btn {
+            border: 0;
+            background: #0b6bcb;
+            color: #fff;
+            font-weight: 600;
+            padding: 12px 18px;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+
+        .analyze-btn:hover {
+            background: #0959a8;
+        }
+
+        #resultCard.hidden {
+            display: none;
+        }
+
+        #resultCard {
+            margin-top: 18px;
+            border-top: 1px solid #eaecf0;
+            padding-top: 18px;
+        }
+
+        #resultTicker {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        #resultStatus {
+            margin: 6px 0 14px;
+            color: #667085;
+            font-weight: 600;
+        }
+
+        #resultReasoning {
+            margin: 0;
+            white-space: pre-wrap;
+            background: #f8fafc;
+            border: 1px solid #eaecf0;
+            border-radius: 12px;
+            padding: 14px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <main class="page">
+        <section class="panel">
+            <h1 class="title">Stock Dashboard</h1>
+            <p class="subtitle">Run Gemini analysis and keep live price updates flowing via SSE.</p>
+
+            <form id="analyzeForm" class="row">
+                <input id="symbol" name="symbol" class="ticker-input" placeholder="Enter ticker (AAPL, MSFT, BTC-USD)" required>
+                <button type="submit" class="analyze-btn">Analyze</button>
+            </form>
+
+            <div id="resultCard" class="hidden">
+                <h2 id="resultTicker">---</h2>
+                <p id="resultStatus">Status: Idle</p>
+                <h4>Gemini LLM Contextual Breakdown</h4>
+                <p id="resultReasoning">Waiting for execution input...</p>
             </div>
-            <div class="dialog-body">
-                <p>Enter a stock ticker like <strong>AAPL</strong>, <strong>TSLA</strong>, or <strong>NVDA</strong> and click Analyze to see a quick sentiment summary.</p>
-                <p>This dialog is a simple reusable overlay that you can extend for confirmation messages, alerts, or onboarding text.</p>
-            </div>
-            <div class="dialog-actions">
-                <button type="button" data-dialog-close class="dialog-button">Close</button>
-            </div>
-        </dialog>
-    </section>
+        </section>
+    </main>
 
-    {% if result %}
-    <section class="analysis-results">
-
-        <h2>📊 Analysis for {{ result.ticker }}</h2>
-
-        <div class="result-card">
-            <p><strong>Price:</strong> {{ result.price }}</p>
-            <p><strong>Sentiment:</strong> {{ result.sentiment }}</p>
-            <p><strong>Summary:</strong> <span id="summary">{{ result.summary }}</span></p>
-            <div id="live-stream" data-symbol="{{ result.ticker }}" aria-live="polite"></div>
-        </div>
-
-        <form action="/reanalyze" method="POST">
-            <input type="hidden" name="ticker" value="{{ result.ticker }}">
-            <button type="submit">Re‑Analyze</button>
-        </form>
-
-    </section>
-    {% endif %}
-
-</div>
-
-{% endblock %}
+    <script src="{{ url_for('static', filename='frontend.js') }}"></script>
+</body>
+</html>
