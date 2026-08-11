@@ -1,0 +1,8 @@
+# Cache analysis results to reduce API calls
+from functools import lru_cache
+from datetime import timedelta
+
+@lru_cache(maxsize=100)
+def get_cached_analysis(ticker):
+    # Your analysis logic here
+    pass
