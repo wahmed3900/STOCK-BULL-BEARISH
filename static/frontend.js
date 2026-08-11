@@ -1,87 +1,123 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const form = document.getElementById('analyzeForm');
-    const symbolInput = document.getElementById('symbol');
-    const resultCard = document.getElementById('resultCard');
-    const resultTicker = document.getElementById('resultTicker');
-    const resultStatus = document.getElementById('resultStatus');
-    const resultReasoning = document.getElementById('resultReasoning');
+    const elements = {
+        form: document.getElementById('analyzeForm'),
+        symbolInput: document.getElementById('symbol'),
+        resultCard: document.getElementById('resultCard'),
+        resultTicker: document.getElementById('resultTicker'),
+        resultStatus: document.getElementById('resultStatus'),
+        resultReasoning: document.getElementById('resultReasoning'),
+        submitBtn: document.querySelector('#analyzeForm button[type="submit"]')
+    };
 
-    if (!form || !symbolInput || !resultCard || !resultTicker || !resultStatus || !resultReasoning) {
-        return;
-    }
+    // Validate all required elements
+    if (Object.values(elements).some(el => !el)) return;
 
     let evtSource = null;
+    let abortController = null;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 5;
 
     function closeStream() {
         if (evtSource) {
             evtSource.close();
             evtSource = null;
+            reconnectAttempts = 0;
         }
     }
 
     function connectPriceStream(ticker) {
         closeStream();
         evtSource = new EventSource(`/stream/${encodeURIComponent(ticker)}`);
+        let previousPrice = null;
 
         evtSource.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
                 if (typeof data.price === 'number') {
-                    resultStatus.textContent = `Status: Live - $${data.price.toFixed(2)}`;
+                    const change = previousPrice ? ((data.price - previousPrice) / previousPrice * 100).toFixed(2) : null;
+                    previousPrice = data.price;
+                    const changeText = change ? ` (${change > 0 ? '+' : ''}${change}%)` : '';
+                    elements.resultStatus.textContent = `Status: Live - $${data.price.toFixed(2)}${changeText}`;
                 }
             } catch (_err) {
-                resultStatus.textContent = 'Status: Live stream received malformed payload';
+                elements.resultStatus.textContent = 'Status: Live stream received malformed payload';
             }
         };
 
         evtSource.onerror = () => {
-            resultStatus.textContent = 'Status: Stream disconnected';
-            closeStream();
+            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                reconnectAttempts++;
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+                elements.resultStatus.textContent = `Status: Reconnecting in ${delay/1000}s...`;
+                setTimeout(() => connectPriceStream(ticker), delay);
+            } else {
+                elements.resultStatus.textContent = 'Status: Stream permanently disconnected';
+                closeStream();
+            }
         };
     }
 
-    form.addEventListener('submit', async (event) => {
+    function setLoadingState(loading) {
+        elements.submitBtn.disabled = loading;
+        elements.submitBtn.textContent = loading ? 'Analyzing...' : 'Analyze';
+    }
+
+    elements.form.addEventListener('submit', async (event) => {
         event.preventDefault();
 
-        const ticker = symbolInput.value.trim().toUpperCase();
-        symbolInput.value = ticker;
+        const ticker = elements.symbolInput.value.trim().toUpperCase();
+        elements.symbolInput.value = ticker;
 
         if (!/^[A-Z0-9.-]{1,10}$/.test(ticker)) {
-            resultCard.classList.remove('hidden');
-            resultTicker.textContent = '---';
-            resultStatus.textContent = 'Status: Invalid ticker format';
-            resultReasoning.textContent = 'Use 1-10 characters: A-Z, 0-9, dot, or hyphen.';
+            elements.resultCard.classList.remove('hidden');
+            elements.resultTicker.textContent = '---';
+            elements.resultStatus.textContent = 'Status: Invalid ticker format';
+            elements.resultReasoning.textContent = 'Use 1-10 characters: A-Z, 0-9, dot, or hyphen.';
             return;
         }
 
-        resultCard.classList.remove('hidden');
-        resultTicker.textContent = ticker;
-        resultStatus.textContent = 'Status: Analyzing...';
-        resultReasoning.textContent = 'Running Gemini analysis...';
+        // Cancel any pending request
+        if (abortController) abortController.abort();
+        
+        closeStream();
+        setLoadingState(true);
+
+        elements.resultCard.classList.remove('hidden');
+        elements.resultTicker.textContent = ticker;
+        elements.resultStatus.textContent = 'Status: Analyzing...';
+        elements.resultReasoning.textContent = 'Running Gemini analysis...';
 
         try {
-            const response = await fetch(`/api/analyze/${encodeURIComponent(ticker)}`);
+            abortController = new AbortController();
+            const response = await fetch(`/api/analyze/${encodeURIComponent(ticker)}`, {
+                signal: abortController.signal
+            });
+            
             const data = await response.json();
 
             if (!response.ok || data.status === 'error') {
                 const message = data.message || data.error || 'Analyze request failed';
-                resultStatus.textContent = 'Status: Error';
-                resultReasoning.textContent = message;
-                closeStream();
+                elements.resultStatus.textContent = `Status: Error (${response.status})`;
+                elements.resultReasoning.textContent = message;
                 return;
             }
 
-            resultStatus.textContent = 'Status: Analysis complete, connecting live feed...';
-            resultReasoning.textContent = data.analysis || 'No analysis text returned.';
+            elements.resultStatus.textContent = 'Status: Analysis complete, connecting live feed...';
+            elements.resultReasoning.textContent = data.analysis || 'No analysis text returned.';
             connectPriceStream(ticker);
-        } catch (_err) {
-            resultStatus.textContent = 'Status: Request failed';
-            resultReasoning.textContent = 'Could not reach backend. Check Flask server logs.';
-            closeStream();
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                // Request was cancelled, ignore
+                return;
+            }
+            elements.resultStatus.textContent = 'Status: Request failed';
+            elements.resultReasoning.textContent = 'Could not reach backend. Check Flask server logs.';
+        } finally {
+            setLoadingState(false);
+            abortController = null;
         }
     });
 
-    window.addEventListener('beforeunload', () => {
-        closeStream();
-    });
+    const beforeUnloadHandler = () => closeStream();
+    window.addEventListener('beforeunload', beforeUnloadHandler);
 });
