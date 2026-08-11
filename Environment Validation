@@ -1,0 +1,8 @@
+# Add validation for environment variables
+def validate_environment():
+    required_vars = ['GEMINI_API_KEY']
+    missing = [var for var in required_vars if not os.getenv(var)]
+    if missing:
+        raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+
+validate_environment()
