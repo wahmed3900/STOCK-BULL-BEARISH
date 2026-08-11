@@ -1,0 +1,9 @@
+@app.route('/api/history/<ticker>', methods=['GET'])
+def get_history(ticker):
+    days = request.args.get('days', 30, type=int)
+    ticker = yf.Ticker(ticker)
+    hist = ticker.history(period=f'{days}d')
+    return jsonify({
+        "ticker": ticker,
+        "history": hist.to_dict('records')
+    })
