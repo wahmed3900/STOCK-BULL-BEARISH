@@ -1,0 +1,18 @@
+#!/bin/bash
+# setup.sh - Run this to create the project structure
+
+# Create directories
+mkdir -p stock-bull-bearish/{static,templates,utils,tests}
+cd stock-bull-bearish
+
+# Create empty files
+touch app.py
+touch requirements.txt
+touch static/script.js
+touch static/style.css
+touch templates/index.html
+touch utils/__init__.py
+touch utils/sanitize.py
+
+echo "Project structure created!"
+echo "Now add your code to the appropriate files."
