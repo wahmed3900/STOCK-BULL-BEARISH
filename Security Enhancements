@@ -1,0 +1,10 @@
+# Add input sanitization
+import re
+
+def sanitize_ticker(ticker):
+    # Only allow alphanumeric and dots (e.g., "AAPL", "BRK-B")
+    return re.sub(r'[^a-zA-Z0-9.-]', '', ticker)
+
+@app.route('/stream/<symbol>', methods=['GET'])
+def stream_ticker(symbol):
+    symbol = sanitize_ticker(symbol.strip().upper())
