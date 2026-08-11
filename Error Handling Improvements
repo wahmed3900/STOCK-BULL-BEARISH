@@ -1,0 +1,17 @@
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@app.route('/api/analyze/<ticker>', methods=['GET'])
+def analyze_stock(ticker):
+    try:
+        # Validate ticker first
+        if not yf.Ticker(ticker).history(period='1d').empty:
+            # Proceed with analysis
+            pass
+        else:
+            return jsonify({"status": "error", "message": f"Invalid ticker: {ticker}"}), 400
+    except Exception as exc:
+        logger.error(f"Analysis error for {ticker}: {str(exc)}")
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
