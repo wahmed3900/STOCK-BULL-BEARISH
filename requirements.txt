@@ -6,7 +6,7 @@ flask-wtf==1.2.1
 flask-swagger-ui==4.11.1
 werkzeug==3.0.1
 gunicorn==21.2.0
-gevent==24.2.1
+
 
 # Environment & Logging
 python-dotenv==1.0.1
