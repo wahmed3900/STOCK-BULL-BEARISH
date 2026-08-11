@@ -3,77 +3,721 @@
 {% block content %}
 
 <div class="pricing-page">
+    
+    <!-- Page Header -->
+    <div class="pricing-header">
+        <h2 class="pricing-title">💰 Choose Your Plan</h2>
+        <p class="pricing-subtitle">Select the perfect plan for your investment journey</p>
+    </div>
 
-    <h2 class="pricing-title">💰 Choose Your Plan</h2>
+    <!-- Toggle for Annual/Monthly Billing -->
+    <div class="billing-toggle">
+        <span class="billing-label {% if billing_type == 'monthly' %}active{% endif %}">Monthly</span>
+        <label class="toggle-switch">
+            <input type="checkbox" id="billingToggle" {% if billing_type == 'annual' %}checked{% endif %}>
+            <span class="toggle-slider"></span>
+        </label>
+        <span class="billing-label {% if billing_type == 'annual' %}active{% endif %}">Annual <span class="save-badge">Save 20%</span></span>
+    </div>
 
     <div class="pricing-grid">
 
         <!-- Free Tier -->
         <div class="pricing-card tier-free">
+            <div class="card-badge">Free</div>
             <h3>Free</h3>
-            <p class="tier-desc">Perfect for beginners</p>
+            <p class="tier-desc">Perfect for beginners exploring the market</p>
 
-            <p class="tier-price">$0</p>
+            <div class="tier-price-wrapper">
+                <p class="tier-price">$0</p>
+                <p class="tier-period">forever</p>
+            </div>
 
             <ul class="tier-features">
-                <li>✔ Basic sentiment</li>
-                <li>✔ Basic stock data</li>
-                <li>✔ OpenRouter free models</li>
-                <li>✔ Limited daily usage</li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Basic sentiment analysis</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Real-time stock data</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">OpenRouter free models</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">5 analysis requests per day</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Single stock tracking</span>
+                </li>
+                <li class="feature-disabled">
+                    <span class="feature-icon">❌</span>
+                    <span class="feature-text">Premium AI models</span>
+                </li>
+                <li class="feature-disabled">
+                    <span class="feature-icon">❌</span>
+                    <span class="feature-text">Email support</span>
+                </li>
             </ul>
 
             <form action="/upgrade" method="POST">
                 <input type="hidden" name="tier" value="free">
-                <button class="tier-btn">Get Started</button>
+                <input type="hidden" name="billing_type" value="monthly">
+                <button class="tier-btn tier-btn-free">Get Started</button>
             </form>
+            
+            <p class="tier-footnote">No credit card required</p>
         </div>
 
         <!-- Starter Tier -->
         <div class="pricing-card tier-starter highlight">
+            <div class="card-badge popular-badge">🔥 Most Popular</div>
             <h3>Starter</h3>
             <p class="tier-desc">Best for everyday investors</p>
 
-            <p class="tier-price">$9<span>/mo</span></p>
+            <div class="tier-price-wrapper">
+                <p class="tier-price" id="starter-price">
+                    <span class="currency">$</span>
+                    <span class="amount">9</span>
+                </p>
+                <p class="tier-period" id="starter-period">/month</p>
+            </div>
 
             <ul class="tier-features">
-                <li>✔ Advanced AI analysis</li>
-                <li>✔ Together.ai premium models</li>
-                <li>✔ Multi-stock comparison</li>
-                <li>✔ Portfolio insights</li>
-                <li>✔ Premium UI theme</li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Advanced AI analysis</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Together.ai premium models</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Multi-stock comparison (up to 5)</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Portfolio insights dashboard</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Premium UI theme</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">50 analysis requests per day</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Email support (24hr response)</span>
+                </li>
+                <li class="feature-disabled">
+                    <span class="feature-icon">❌</span>
+                    <span class="feature-text">SMS alerts</span>
+                </li>
+                <li class="feature-disabled">
+                    <span class="feature-icon">❌</span>
+                    <span class="feature-text">Historical sentiment timeline</span>
+                </li>
             </ul>
 
             <form action="/upgrade" method="POST">
                 <input type="hidden" name="tier" value="starter">
-                <button class="tier-btn tier-btn-highlight">Upgrade</button>
+                <input type="hidden" name="billing_type" id="starter-billing" value="monthly">
+                <button class="tier-btn tier-btn-highlight">Upgrade Now</button>
             </form>
+            
+            <p class="tier-footnote">14-day money-back guarantee</p>
         </div>
 
         <!-- Pro Tier -->
         <div class="pricing-card tier-pro">
+            <div class="card-badge">Best Value</div>
             <h3>Pro</h3>
-            <p class="tier-desc">For serious traders</p>
+            <p class="tier-desc">For serious traders and professionals</p>
 
-            <p class="tier-price">$19<span>/mo</span></p>
+            <div class="tier-price-wrapper">
+                <p class="tier-price" id="pro-price">
+                    <span class="currency">$</span>
+                    <span class="amount">19</span>
+                </p>
+                <p class="tier-period" id="pro-period">/month</p>
+            </div>
 
             <ul class="tier-features">
-                <li>✔ All Starter features</li>
-                <li>✔ Watchlist alerts</li>
-                <li>✔ SMS alerts</li>
-                <li>✔ Historical sentiment timeline</li>
-                <li>✔ Risk scoring</li>
-                <li>✔ Trend prediction</li>
-                <li>✔ Unlimited analysis</li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">All Starter features</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Unlimited analysis requests</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Watchlist with real-time alerts</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">SMS alerts for price movements</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Historical sentiment timeline</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Advanced risk scoring</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Trend prediction models</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Priority email & phone support</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">API access</span>
+                </li>
+                <li>
+                    <span class="feature-icon">✅</span>
+                    <span class="feature-text">Export data to CSV/PDF</span>
+                </li>
             </ul>
 
             <form action="/upgrade" method="POST">
                 <input type="hidden" name="tier" value="pro">
+                <input type="hidden" name="billing_type" id="pro-billing" value="monthly">
                 <button class="tier-btn tier-btn-pro">Go Pro</button>
             </form>
+            
+            <p class="tier-footnote">Priority support included</p>
         </div>
 
     </div>
 
+    <!-- Comparison Table -->
+    <div class="comparison-section">
+        <h3>Compare All Features</h3>
+        <table class="comparison-table">
+            <thead>
+                <tr>
+                    <th>Feature</th>
+                    <th>Free</th>
+                    <th>Starter</th>
+                    <th>Pro</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>AI Analysis</td>
+                    <td>Basic</td>
+                    <td>Advanced</td>
+                    <td>Premium</td>
+                </tr>
+                <tr>
+                    <td>Daily Requests</td>
+                    <td>5</td>
+                    <td>50</td>
+                    <td>Unlimited</td>
+                </tr>
+                <tr>
+                    <td>Stock Tracking</td>
+                    <td>1</td>
+                    <td>5</td>
+                    <td>Unlimited</td>
+                </tr>
+                <tr>
+                    <td>Email Support</td>
+                    <td>—</td>
+                    <td>✓</td>
+                    <td>✓</td>
+                </tr>
+                <tr>
+                    <td>SMS Alerts</td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td>✓</td>
+                </tr>
+                <tr>
+                    <td>API Access</td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td>✓</td>
+                </tr>
+                <tr>
+                    <td>Historical Data</td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td>✓</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- FAQ Section -->
+    <div class="faq-section">
+        <h3>Frequently Asked Questions</h3>
+        <div class="faq-grid">
+            <div class="faq-item">
+                <h4>Can I switch plans later?</h4>
+                <p>Yes, you can upgrade or downgrade your plan at any time. Changes will be reflected in your next billing cycle.</p>
+            </div>
+            <div class="faq-item">
+                <h4>What payment methods do you accept?</h4>
+                <p>We accept all major credit cards, PayPal, and cryptocurrency payments.</p>
+            </div>
+            <div class="faq-item">
+                <h4>Is there a free trial?</h4>
+                <p>We offer a 14-day money-back guarantee on all paid plans, no questions asked.</p>
+            </div>
+            <div class="faq-item">
+                <h4>Can I cancel anytime?</h4>
+                <p>Absolutely! Cancel your subscription anytime from your account settings.</p>
+            </div>
+        </div>
+    </div>
+
 </div>
+
+<!-- JavaScript for Billing Toggle -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const toggle = document.getElementById('billingToggle');
+    const starterPrice = document.querySelector('#starter-price .amount');
+    const proPrice = document.querySelector('#pro-price .amount');
+    const starterPeriod = document.getElementById('starter-period');
+    const proPeriod = document.getElementById('pro-period');
+    const starterBilling = document.getElementById('starter-billing');
+    const proBilling = document.getElementById('pro-billing');
+    
+    // Monthly prices
+    const MONTHLY = { starter: 9, pro: 19 };
+    // Annual prices (20% discount)
+    const ANNUAL = { starter: 7.20, pro: 15.20 };
+    
+    toggle.addEventListener('change', function() {
+        if (this.checked) {
+            // Annual billing
+            starterPrice.textContent = ANNUAL.starter;
+            proPrice.textContent = ANNUAL.pro;
+            starterPeriod.textContent = '/month (billed annually)';
+            proPeriod.textContent = '/month (billed annually)';
+            starterBilling.value = 'annual';
+            proBilling.value = 'annual';
+            
+            // Update labels
+            document.querySelectorAll('.billing-label')[0].classList.remove('active');
+            document.querySelectorAll('.billing-label')[1].classList.add('active');
+        } else {
+            // Monthly billing
+            starterPrice.textContent = MONTHLY.starter;
+            proPrice.textContent = MONTHLY.pro;
+            starterPeriod.textContent = '/month';
+            proPeriod.textContent = '/month';
+            starterBilling.value = 'monthly';
+            proBilling.value = 'monthly';
+            
+            // Update labels
+            document.querySelectorAll('.billing-label')[0].classList.add('active');
+            document.querySelectorAll('.billing-label')[1].classList.remove('active');
+        }
+    });
+});
+</script>
+
+<style>
+/* Enhanced CSS Styles */
+.pricing-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.pricing-header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+}
+
+.pricing-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 0.5rem;
+}
+
+.pricing-subtitle {
+    font-size: 1.1rem;
+    color: #6b7280;
+}
+
+/* Billing Toggle */
+.billing-toggle {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+}
+
+.billing-label {
+    font-weight: 500;
+    color: #6b7280;
+    transition: color 0.3s;
+}
+
+.billing-label.active {
+    color: #1a1a2e;
+}
+
+.save-badge {
+    background: #10b981;
+    color: white;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    margin-left: 0.25rem;
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 26px;
+    cursor: pointer;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.4s;
+    border-radius: 26px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background-color: #4f46e5;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(24px);
+}
+
+/* Pricing Grid */
+.pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+    margin-bottom: 3rem;
+}
+
+/* Pricing Cards */
+.pricing-card {
+    background: white;
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e5e7eb;
+    transition: all 0.3s ease;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.pricing-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+}
+
+.pricing-card.highlight {
+    border-color: #4f46e5;
+    box-shadow: 0 8px 16px rgba(79, 70, 229, 0.15);
+}
+
+.pricing-card.highlight:hover {
+    box-shadow: 0 12px 32px rgba(79, 70, 229, 0.25);
+}
+
+.card-badge {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #6b7280;
+    color: white;
+    padding: 0.25rem 1rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.popular-badge {
+    background: #4f46e5;
+}
+
+.tier-free .card-badge {
+    background: #6b7280;
+}
+
+.tier-pro .card-badge {
+    background: #8b5cf6;
+}
+
+.tier-price-wrapper {
+    margin: 1.5rem 0;
+}
+
+.tier-price {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin: 0;
+}
+
+.tier-price .currency {
+    font-size: 1.5rem;
+    vertical-align: top;
+    margin-right: 2px;
+}
+
+.tier-period {
+    color: #6b7280;
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.tier-desc {
+    color: #6b7280;
+    font-size: 0.95rem;
+    margin: 0.5rem 0 1rem 0;
+}
+
+.tier-features {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1.5rem 0;
+    flex: 1;
+}
+
+.tier-features li {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.tier-features li:last-child {
+    border-bottom: none;
+}
+
+.tier-features .feature-icon {
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+.feature-disabled {
+    opacity: 0.5;
+}
+
+.feature-disabled .feature-text {
+    text-decoration: line-through;
+}
+
+.tier-btn {
+    width: 100%;
+    padding: 0.75rem;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: auto;
+}
+
+.tier-btn-free {
+    background: #f3f4f6;
+    color: #1a1a2e;
+}
+
+.tier-btn-free:hover {
+    background: #e5e7eb;
+}
+
+.tier-btn-highlight {
+    background: #4f46e5;
+    color: white;
+}
+
+.tier-btn-highlight:hover {
+    background: #4338ca;
+    transform: scale(1.02);
+}
+
+.tier-btn-pro {
+    background: #8b5cf6;
+    color: white;
+}
+
+.tier-btn-pro:hover {
+    background: #7c3aed;
+    transform: scale(1.02);
+}
+
+.tier-footnote {
+    text-align: center;
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin-top: 0.75rem;
+}
+
+/* Comparison Table */
+.comparison-section {
+    margin: 3rem 0;
+}
+
+.comparison-section h3 {
+    text-align: center;
+    font-size: 1.5rem;
+    color: #1a1a2e;
+    margin-bottom: 1.5rem;
+}
+
+.comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.comparison-table th {
+    background: #f9fafb;
+    padding: 1rem;
+    text-align: center;
+    font-weight: 600;
+    color: #1a1a2e;
+}
+
+.comparison-table td {
+    padding: 0.75rem 1rem;
+    text-align: center;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.comparison-table tr:hover {
+    background: #f9fafb;
+}
+
+/* FAQ Section */
+.faq-section {
+    margin: 3rem 0;
+}
+
+.faq-section h3 {
+    text-align: center;
+    font-size: 1.5rem;
+    color: #1a1a2e;
+    margin-bottom: 1.5rem;
+}
+
+.faq-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.faq-item {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.faq-item h4 {
+    color: #1a1a2e;
+    margin-bottom: 0.5rem;
+}
+
+.faq-item p {
+    color: #6b7280;
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .pricing-grid {
+        grid-template-columns: 1fr;
+        max-width: 400px;
+        margin: 0 auto;
+    }
+    
+    .pricing-title {
+        font-size: 2rem;
+    }
+    
+    .comparison-table {
+        font-size: 0.85rem;
+    }
+    
+    .comparison-table th,
+    .comparison-table td {
+        padding: 0.5rem;
+    }
+    
+    .faq-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .pricing-page {
+        padding: 1rem;
+    }
+    
+    .pricing-card {
+        padding: 1.5rem;
+    }
+    
+    .tier-price {
+        font-size: 2rem;
+    }
+}
+</style>
 
 {% endblock %}
