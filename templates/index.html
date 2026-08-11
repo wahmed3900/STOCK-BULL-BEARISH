@@ -1,15 +1,23 @@
 import os
 import json
 import logging
-from typing import Generator
+from typing import Generator, Optional, List, Dict, Any
 from openai import OpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class OpenRouterStreamer:
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: str = None, timeout: float = 30.0, max_retries: int = 3):
+        """
+        Initialize OpenRouter streamer.
+        
+        Args:
+            api_key: OpenRouter API key (falls back to OPENROUTER_API_KEY env var)
+            timeout: Request timeout in seconds
+            max_retries: Maximum number of retry attempts
+        """
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         if not self.api_key:
             raise ValueError("OpenRouter API key is required")
@@ -17,29 +25,98 @@ class OpenRouterStreamer:
         self.client = OpenAI(
             api_key=self.api_key,
             base_url="https://openrouter.ai/api/v1",
-            timeout=30.0
+            timeout=timeout
         )
-    
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    def stream_analysis(self, symbol: str, news: str, model: str = "deepseek-ai/DeepSeek-R1") -> Generator[str, None, None]:
-        try:
-            # Yield start metadata
-            yield f"data: {json.dumps({'type': 'start', 'symbol': symbol, 'model': model})}\n\n"
+        self.max_retries = max_retries
+        
+    @retry(
+        stop=stop_after_attempt(3), 
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((Exception))  # Will retry on any exception
+    )
+    def stream_analysis(
+        self, 
+        symbol: str, 
+        news: str, 
+        model: str = "deepseek-ai/DeepSeek-R1",
+        system_prompt: Optional[str] = None,
+        analysis_type: str = "comprehensive",
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        extra_headers: Optional[Dict[str, str]] = None
+    ) -> Generator[str, None, None]:
+        """
+        Stream analysis for a symbol using news data.
+        
+        Args:
+            symbol: Stock/crypto symbol to analyze
+            news: News content to analyze
+            model: OpenRouter model to use
+            system_prompt: Optional system prompt for the model
+            analysis_type: Type of analysis (comprehensive, sentiment, impact)
+            temperature: Model temperature (0.0 to 1.0)
+            max_tokens: Maximum tokens to generate
+            extra_headers: Additional headers for OpenRouter
             
+        Yields:
+            Server-Sent Events (SSE) formatted strings
+        """
+        try:
+            # Prepare analysis prompts
+            prompts = {
+                "comprehensive": f"Analyze {symbol} using this news:\n{news}\nGive step-by-step reasoning.",
+                "sentiment": f"Analyze sentiment for {symbol} from this news:\n{news}\nProvide sentiment score and reasoning.",
+                "impact": f"Analyze potential impact on {symbol} price from this news:\n{news}\nAssess bullish/bearish factors."
+            }
+            content = prompts.get(analysis_type, prompts["comprehensive"])
+            
+            # Build messages
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": content})
+            
+            # Prepare headers
+            headers = {
+                "HTTP-Referer": os.getenv("OPENROUTER_REFERER", "http://localhost"),
+                "X-Title": f"News Analysis for {symbol}"
+            }
+            if extra_headers:
+                headers.update(extra_headers)
+            
+            # Yield start metadata
+            yield f"data: {json.dumps({'type': 'start', 'symbol': symbol, 'model': model, 'analysis_type': analysis_type})}\n\n"
+            
+            # Create stream
             stream = self.client.chat.completions.create(
                 model=model,
-                messages=[{
-                    "role": "user",
-                    "content": f"Analyze {symbol} using this news:\n{news}\nGive step-by-step reasoning."
-                }],
-                stream=True
+                messages=messages,
+                stream=True,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                extra_headers=headers
             )
             
+            # Process stream
             for chunk in stream:
                 if chunk.choices:
-                    token = chunk.choices[0].delta.get("content", "")
+                    delta = chunk.choices[0].delta
+                    
+                    # Handle standard content
+                    token = ""
+                    if hasattr(delta, 'content'):
+                        token = delta.content or ""
+                    elif hasattr(delta, 'get'):
+                        token = delta.get("content", "")
+                    
                     if token:
                         yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                    
+                    # Handle reasoning tokens (for DeepSeek-R1 and similar models)
+                    if hasattr(delta, 'reasoning') and delta.reasoning:
+                        reasoning = delta.reasoning or ""
+                        if reasoning:
+                            yield f"data: {json.dumps({'type': 'reasoning', 'content': reasoning})}\n\n"
             
             # Yield end metadata
             yield f"data: {json.dumps({'type': 'end'})}\n\n"
@@ -47,3 +124,140 @@ class OpenRouterStreamer:
         except Exception as e:
             logger.error(f"Streaming error for {symbol}: {e}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+    
+    def stream_analysis_multiple_news(
+        self,
+        symbol: str,
+        news_items: List[str],
+        model: str = "deepseek-ai/DeepSeek-R1",
+        **kwargs
+    ) -> Generator[str, None, None]:
+        """
+        Stream analysis for a symbol using multiple news items.
+        
+        Args:
+            symbol: Stock/crypto symbol to analyze
+            news_items: List of news content to analyze
+            model: OpenRouter model to use
+            **kwargs: Additional arguments passed to stream_analysis
+            
+        Yields:
+            Server-Sent Events (SSE) formatted strings
+        """
+        combined_news = "\n---\n".join(news_items)
+        yield from self.stream_analysis(symbol, combined_news, model, **kwargs)
+    
+    def stream_analysis_with_context(
+        self,
+        symbol: str,
+        news: str,
+        context: str = None,
+        **kwargs
+    ) -> Generator[str, None, None]:
+        """
+        Stream analysis with additional context.
+        
+        Args:
+            symbol: Stock/crypto symbol to analyze
+            news: News content to analyze
+            context: Additional context (e.g., historical data, technical indicators)
+            **kwargs: Additional arguments passed to stream_analysis
+            
+        Yields:
+            Server-Sent Events (SSE) formatted strings
+        """
+        if context:
+            enhanced_prompt = f"Context: {context}\n\nNews: {news}"
+            yield from self.stream_analysis(symbol, enhanced_prompt, **kwargs)
+        else:
+            yield from self.stream_analysis(symbol, news, **kwargs)
+
+
+# FastAPI Integration (Optional)
+try:
+    from fastapi import FastAPI
+    from fastapi.responses import StreamingResponse
+    
+    app = FastAPI(title="OpenRouter News Analyzer")
+    streamer = OpenRouterStreamer()
+    
+    @app.get("/analyze/{symbol}")
+    async def analyze_stock(
+        symbol: str,
+        news: str,
+        analysis_type: str = "comprehensive",
+        model: str = "deepseek-ai/DeepSeek-R1"
+    ):
+        """Analyze a stock/crypto using news data."""
+        return StreamingResponse(
+            streamer.stream_analysis(
+                symbol=symbol,
+                news=news,
+                model=model,
+                analysis_type=analysis_type
+            ),
+            media_type="text/event-stream"
+        )
+    
+    @app.get("/analyze-multiple/{symbol}")
+    async def analyze_stock_multiple_news(
+        symbol: str,
+        news_items: List[str],
+        model: str = "deepseek-ai/DeepSeek-R1"
+    ):
+        """Analyze a stock/crypto using multiple news items."""
+        return StreamingResponse(
+            streamer.stream_analysis_multiple_news(
+                symbol=symbol,
+                news_items=news_items,
+                model=model
+            ),
+            media_type="text/event-stream"
+        )
+    
+    logger.info("FastAPI routes registered successfully")
+    
+except ImportError:
+    # FastAPI not installed
+    logger.debug("FastAPI not available - skipping route registration")
+    pass
+
+
+# Example usage
+if __name__ == "__main__":
+    # Simple example usage
+    streamer = OpenRouterStreamer(api_key=os.getenv("OPENROUTER_API_KEY"))
+    
+    # Example 1: Basic analysis
+    print("=== Basic Analysis ===")
+    for event in streamer.stream_analysis(
+        symbol="AAPL",
+        news="Apple releases new iPhone with AI features, stock up 2%",
+        analysis_type="comprehensive"
+    ):
+        print(event, end="")
+    
+    # Example 2: Multiple news items
+    print("\n=== Multiple News Analysis ===")
+    news_items = [
+        "Apple releases new iPhone with AI features",
+        "Apple reports record quarterly earnings",
+        "Analyst upgrades Apple stock to buy"
+    ]
+    for event in streamer.stream_analysis_multiple_news(
+        symbol="AAPL",
+        news_items=news_items,
+        analysis_type="sentiment"
+    ):
+        print(event, end="")
+    
+    # Example 3: With context
+    print("\n=== Analysis with Context ===")
+    context = "AAPL is trading at $180, RSI at 65, 50-day MA at $175"
+    for event in streamer.stream_analysis_with_context(
+        symbol="AAPL",
+        news="New iPhone launches next week",
+        context=context,
+        analysis_type="impact"
+    ):
+        print(event, end="")
