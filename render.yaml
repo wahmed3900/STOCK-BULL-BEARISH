@@ -4,9 +4,17 @@ services:
     env: python
     plan: starter
     autoDeploy: true
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: gunicorn app:app -k gevent --workers 1 --worker-connections 1000 --timeout 120
+    buildCommand: |
+      # Install Node.js dependencies for Tailwind
+      npm install
+      # Build Tailwind CSS
+      npm run build:css || npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/output.css --minify
+      # Install Python dependencies
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: gunicorn app:app -k gevent --workers 2 --worker-connections 1000 --timeout 120 --max-requests 1000
     healthCheckPath: /api/health
+    healthCheckTimeout: 5
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
@@ -16,6 +24,11 @@ services:
         value: true
       - key: RATELIMIT_DEFAULT
         value: 200 per day;50 per hour
+      - key: LOG_LEVEL
+        value: INFO
+      - key: CACHE_TTL
+        value: 300
+      # Secret keys (set in Render dashboard)
       - key: REDIS_URL
         sync: false
       - key: SECRET_KEY
