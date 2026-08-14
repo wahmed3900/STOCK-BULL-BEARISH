@@ -1,263 +1,856 @@
-import os
-import json
-import logging
-from typing import Generator, Optional, List, Dict, Any
-from openai import OpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Stock Dashboard</title>
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for Charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* ============================================================
+           CSS VARIABLES & RESET
+           ============================================================ */
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111927;
+            --bg-card: #1a2332;
+            --bg-card-hover: #1f2b3d;
+            --text-primary: #e8edf5;
+            --text-secondary: #8899bb;
+            --text-muted: #5a6a8a;
+            --border-color: #2a3a55;
+            --green: #00d4aa;
+            --green-bg: rgba(0, 212, 170, 0.15);
+            --red: #ff6b8a;
+            --red-bg: rgba(255, 107, 138, 0.15);
+            --blue: #4a9eff;
+            --blue-bg: rgba(74, 158, 255, 0.15);
+            --yellow: #ffd700;
+            --yellow-bg: rgba(255, 215, 0, 0.15);
+            --purple: #a78bfa;
+            --gradient-1: linear-gradient(135deg, #4a9eff, #a78bfa);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            --radius: 16px;
+            --radius-sm: 8px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-class OpenRouterStreamer:
-    def __init__(self, api_key: str = None, timeout: float = 30.0, max_retries: int = 3):
-        """
-        Initialize OpenRouter streamer.
-        
-        Args:
-            api_key: OpenRouter API key (falls back to OPENROUTER_API_KEY env var)
-            timeout: Request timeout in seconds
-            max_retries: Maximum number of retry attempts
-        """
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
-        if not self.api_key:
-            raise ValueError("OpenRouter API key is required")
-        
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url="https://openrouter.ai/api/v1",
-            timeout=timeout
-        )
-        self.max_retries = max_retries
-        
-    @retry(
-        stop=stop_after_attempt(3), 
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((Exception))  # Will retry on any exception
-    )
-    def stream_analysis(
-        self, 
-        symbol: str, 
-        news: str, 
-        model: str = "deepseek-ai/DeepSeek-R1",
-        system_prompt: Optional[str] = None,
-        analysis_type: str = "comprehensive",
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        extra_headers: Optional[Dict[str, str]] = None
-    ) -> Generator[str, None, None]:
-        """
-        Stream analysis for a symbol using news data.
-        
-        Args:
-            symbol: Stock/crypto symbol to analyze
-            news: News content to analyze
-            model: OpenRouter model to use
-            system_prompt: Optional system prompt for the model
-            analysis_type: Type of analysis (comprehensive, sentiment, impact)
-            temperature: Model temperature (0.0 to 1.0)
-            max_tokens: Maximum tokens to generate
-            extra_headers: Additional headers for OpenRouter
-            
-        Yields:
-            Server-Sent Events (SSE) formatted strings
-        """
-        try:
-            # Prepare analysis prompts
-            prompts = {
-                "comprehensive": f"Analyze {symbol} using this news:\n{news}\nGive step-by-step reasoning.",
-                "sentiment": f"Analyze sentiment for {symbol} from this news:\n{news}\nProvide sentiment score and reasoning.",
-                "impact": f"Analyze potential impact on {symbol} price from this news:\n{news}\nAssess bullish/bearish factors."
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        /* ============================================================
+           LAYOUT
+           ============================================================ */
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* ============================================================
+           SIDEBAR
+           ============================================================ */
+        .sidebar {
+            width: 240px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            padding: 1.5rem 1rem;
+            display: flex;
+            flex-direction: column;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .sidebar-logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: var(--gradient-1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            padding: 0.5rem 0 1.5rem 0;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .sidebar-logo i { -webkit-text-fill-color: var(--blue); font-size: 1.8rem; }
+
+        .nav-section { margin-bottom: 1.5rem; }
+        .nav-section-title {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            padding: 0.5rem 0.75rem;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.6rem 0.75rem;
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: var(--transition);
+            margin: 2px 0;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+        .nav-item:hover { background: var(--bg-card); color: var(--text-primary); }
+        .nav-item.active { background: var(--blue-bg); color: var(--blue); }
+        .nav-item i { width: 20px; font-size: 1rem; }
+        .nav-item .badge {
+            margin-left: auto;
+            background: var(--blue);
+            color: white;
+            font-size: 0.6rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 10px;
+        }
+
+        /* ============================================================
+           MAIN CONTENT
+           ============================================================ */
+        .main-content {
+            flex: 1;
+            padding: 1.5rem 2rem;
+            overflow-y: auto;
+        }
+
+        /* ============================================================
+           TOP BAR
+           ============================================================ */
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .page-title h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+        .page-title p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 0.2rem;
+        }
+
+        .top-bar-actions {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 50px;
+            padding: 0.2rem 0.2rem 0.2rem 1rem;
+            transition: var(--transition);
+        }
+        .search-box:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-bg); }
+        .search-box input {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            padding: 0.5rem 0.5rem 0.5rem 0;
+            outline: none;
+            font-size: 0.9rem;
+            width: 180px;
+        }
+        .search-box input::placeholder { color: var(--text-muted); }
+        .search-box button {
+            background: var(--gradient-1);
+            border: none;
+            color: white;
+            padding: 0.5rem 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.85rem;
+            transition: var(--transition);
+        }
+        .search-box button:hover { opacity: 0.85; transform: scale(0.97); }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-color);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .btn:hover { background: var(--bg-card-hover); }
+        .btn-primary { background: var(--blue); border-color: var(--blue); color: white; }
+        .btn-primary:hover { background: #3a8aee; }
+        .btn-outline { background: transparent; }
+
+        /* ============================================================
+           STATS CARDS
+           ============================================================ */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 1.2rem 1.5rem;
+            border: 1px solid var(--border-color);
+            transition: var(--transition);
+        }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+        .stat-card .label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+        .stat-card .value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin: 0.3rem 0;
+        }
+        .stat-card .change {
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 20px;
+        }
+        .change.positive { color: var(--green); background: var(--green-bg); }
+        .change.negative { color: var(--red); background: var(--red-bg); }
+        .stat-card .sub-text { font-size: 0.75rem; color: var(--text-muted); }
+
+        /* ============================================================
+           MARKET SECTIONS (TABS)
+           ============================================================ */
+        .market-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+        .market-tab {
+            padding: 0.5rem 1.2rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            transition: var(--transition);
+            border: none;
+            background: none;
+        }
+        .market-tab:hover { color: var(--text-primary); background: var(--bg-card); }
+        .market-tab.active {
+            background: var(--blue-bg);
+            color: var(--blue);
+            font-weight: 600;
+        }
+        .market-tab i { margin-right: 0.4rem; }
+
+        /* ============================================================
+           TABLE
+           ============================================================ */
+        .table-container {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border-color);
+            overflow: auto;
+            margin-bottom: 2rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        thead {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+        th {
+            padding: 0.8rem 1rem;
+            text-align: left;
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        td {
+            padding: 0.7rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+        }
+        tr:hover td { background: var(--bg-card-hover); }
+        tr:last-child td { border-bottom: none; }
+
+        .stock-name {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .stock-name .icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.7rem;
+            flex-shrink: 0;
+        }
+        .stock-name .icon.tech { background: var(--blue-bg); color: var(--blue); }
+        .stock-name .icon.crypto { background: var(--yellow-bg); color: var(--yellow); }
+        .stock-name .icon.finance { background: var(--green-bg); color: var(--green); }
+        .stock-name .icon.energy { background: var(--red-bg); color: var(--red); }
+
+        .symbol-main { font-weight: 600; }
+        .symbol-sub { font-size: 0.7rem; color: var(--text-muted); }
+
+        .price-cell { font-weight: 600; }
+        .change-cell { font-weight: 500; }
+        .change-cell.positive { color: var(--green); }
+        .change-cell.negative { color: var(--red); }
+
+        .volume-cell { color: var(--text-secondary); }
+
+        .rating {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        .rating.buy { background: var(--green-bg); color: var(--green); }
+        .rating.sell { background: var(--red-bg); color: var(--red); }
+        .rating.hold { background: var(--yellow-bg); color: var(--yellow); }
+        .rating.strong { background: var(--blue-bg); color: var(--blue); }
+
+        /* ============================================================
+           CHART SECTION
+           ============================================================ */
+        .chart-section {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border-color);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .chart-header h3 { font-size: 1rem; font-weight: 600; }
+        .chart-timeframes {
+            display: flex;
+            gap: 0.3rem;
+        }
+        .chart-timeframes button {
+            padding: 0.2rem 0.8rem;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .chart-timeframes button:hover { background: var(--bg-card-hover); }
+        .chart-timeframes button.active {
+            background: var(--blue);
+            color: white;
+            border-color: var(--blue);
+        }
+        .chart-wrapper { position: relative; height: 300px; }
+
+        /* ============================================================
+           ANALYSIS PANEL
+           ============================================================ */
+        .analysis-panel {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border-color);
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+        }
+        .analysis-panel h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .analysis-panel .content {
+            color: var(--text-secondary);
+            line-height: 1.8;
+            font-size: 0.95rem;
+            white-space: pre-wrap;
+        }
+        .analysis-panel .loading {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        /* ============================================================
+           RESPONSIVE
+           ============================================================ */
+        @media (max-width: 1024px) {
+            .sidebar { width: 200px; padding: 1rem 0.75rem; }
+            .main-content { padding: 1rem; }
+        }
+
+        @media (max-width: 768px) {
+            .app-container { flex-direction: column; }
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                flex-direction: row;
+                flex-wrap: wrap;
+                padding: 0.75rem 1rem;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
             }
-            content = prompts.get(analysis_type, prompts["comprehensive"])
-            
-            # Build messages
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": content})
-            
-            # Prepare headers
-            headers = {
-                "HTTP-Referer": os.getenv("OPENROUTER_REFERER", "http://localhost"),
-                "X-Title": f"News Analysis for {symbol}"
+            .sidebar-logo {
+                border-bottom: none;
+                margin-bottom: 0;
+                padding-bottom: 0;
+                font-size: 1.2rem;
             }
-            if extra_headers:
-                headers.update(extra_headers)
-            
-            # Yield start metadata
-            yield f"data: {json.dumps({'type': 'start', 'symbol': symbol, 'model': model, 'analysis_type': analysis_type})}\n\n"
-            
-            # Create stream
-            stream = self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                stream=True,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                extra_headers=headers
-            )
-            
-            # Process stream
-            for chunk in stream:
-                if chunk.choices:
-                    delta = chunk.choices[0].delta
-                    
-                    # Handle standard content
-                    token = ""
-                    if hasattr(delta, 'content'):
-                        token = delta.content or ""
-                    elif hasattr(delta, 'get'):
-                        token = delta.get("content", "")
-                    
-                    if token:
-                        yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
-                    
-                    # Handle reasoning tokens (for DeepSeek-R1 and similar models)
-                    if hasattr(delta, 'reasoning') and delta.reasoning:
-                        reasoning = delta.reasoning or ""
-                        if reasoning:
-                            yield f"data: {json.dumps({'type': 'reasoning', 'content': reasoning})}\n\n"
-            
-            # Yield end metadata
-            yield f"data: {json.dumps({'type': 'end'})}\n\n"
-            
-        except Exception as e:
-            logger.error(f"Streaming error for {symbol}: {e}", exc_info=True)
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-    
-    def stream_analysis_multiple_news(
-        self,
-        symbol: str,
-        news_items: List[str],
-        model: str = "deepseek-ai/DeepSeek-R1",
-        **kwargs
-    ) -> Generator[str, None, None]:
-        """
-        Stream analysis for a symbol using multiple news items.
+            .nav-section { display: none; }
+            .nav-section.mobile-show { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+            .nav-item { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .top-bar { flex-direction: column; align-items: stretch; }
+            .search-box input { width: 120px; }
+            .table-container { font-size: 0.75rem; }
+            th, td { padding: 0.4rem 0.6rem; }
+            .stock-name .icon { width: 20px; height: 20px; font-size: 0.6rem; }
+        }
+
+        @media (max-width: 480px) {
+            .stats-grid { grid-template-columns: 1fr; }
+            .market-tabs { gap: 0.3rem; }
+            .market-tab { padding: 0.3rem 0.8rem; font-size: 0.75rem; }
+        }
+
+        /* ============================================================
+           TOAST NOTIFICATIONS
+           ============================================================ */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 1rem 1.5rem;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            color: var(--text-primary);
+            z-index: 1000;
+            transform: translateY(120px);
+            opacity: 0;
+            transition: var(--transition);
+            max-width: 400px;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast.error { border-color: var(--red); }
+        .toast.success { border-color: var(--green); }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+
+    <!-- ============================================================
+    SIDEBAR
+    ============================================================ -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <i class="fas fa-chart-line"></i> ProDash
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Markets</div>
+            <button class="nav-item active" data-view="stocks">
+                <i class="fas fa-building"></i> Stocks
+            </button>
+            <button class="nav-item" data-view="crypto">
+                <i class="fab fa-bitcoin"></i> Crypto
+            </button>
+            <button class="nav-item" data-view="options">
+                <i class="fas fa-arrow-trend-up"></i> Options
+            </button>
+            <button class="nav-item" data-view="futures">
+                <i class="fas fa-clock"></i> Futures
+            </button>
+            <button class="nav-item" data-view="indices">
+                <i class="fas fa-chart-simple"></i> Indices
+            </button>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Tools</div>
+            <button class="nav-item" id="navAnalyze">
+                <i class="fas fa-robot"></i> AI Analysis
+            </button>
+            <button class="nav-item" id="navWatchlist">
+                <i class="fas fa-star"></i> Watchlist
+                <span class="badge">4</span>
+            </button>
+        </div>
+
+        <div class="nav-section" style="margin-top: auto; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+            <div class="nav-item" style="opacity: 0.6; font-size: 0.75rem;">
+                <i class="fas fa-circle" style="color: var(--green); font-size: 0.5rem;"></i>
+                Live
+                <span style="margin-left: auto; color: var(--text-muted);">v2.0</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ============================================================
+    MAIN CONTENT
+    ============================================================ -->
+    <main class="main-content" id="mainContent">
+
+        <!-- ============================================================
+        TOP BAR
+        ============================================================ -->
+        <div class="top-bar">
+            <div class="page-title">
+                <h1 id="pageTitle">📈 US Stocks</h1>
+                <p id="pageSubtitle">Real-time market data & AI-powered insights</p>
+            </div>
+            <div class="top-bar-actions">
+                <div class="search-box">
+                    <input type="text" id="symbolInput" placeholder="Search symbol..." value="AAPL">
+                    <button id="searchBtn"><i class="fas fa-search"></i> Analyze</button>
+                </div>
+                <button class="btn btn-outline" id="refreshBtn"><i class="fas fa-sync-alt"></i></button>
+            </div>
+        </div>
+
+        <!-- ============================================================
+        STATS CARDS
+        ============================================================ -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="label">S&P 500</div>
+                <div class="value" id="sp500">5,432.10</div>
+                <div class="change positive"><i class="fas fa-arrow-up"></i> +0.85%</div>
+                <div class="sub-text">Updated: just now</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">NASDAQ</div>
+                <div class="value" id="nasdaq">17,123.45</div>
+                <div class="change positive"><i class="fas fa-arrow-up"></i> +1.23%</div>
+                <div class="sub-text">Updated: just now</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Bitcoin (BTC)</div>
+                <div class="value" id="btc">$67,890</div>
+                <div class="change negative"><i class="fas fa-arrow-down"></i> -0.42%</div>
+                <div class="sub-text">Updated: just now</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">VIX (Fear Index)</div>
+                <div class="value" id="vix">14.32</div>
+                <div class="change positive"><i class="fas fa-arrow-up"></i> +2.15%</div>
+                <div class="sub-text">Updated: just now</div>
+            </div>
+        </div>
+
+        <!-- ============================================================
+        MARKET TABS
+        ============================================================ -->
+        <div class="market-tabs" id="marketTabs">
+            <button class="market-tab active" data-section="all"><i class="fas fa-list"></i> All</button>
+            <button class="market-tab" data-section="tech"><i class="fas fa-microchip"></i> Tech</button>
+            <button class="market-tab" data-section="finance"><i class="fas fa-university"></i> Finance</button>
+            <button class="market-tab" data-section="health"><i class="fas fa-heartbeat"></i> Healthcare</button>
+            <button class="market-tab" data-section="energy"><i class="fas fa-bolt"></i> Energy</button>
+            <button class="market-tab" data-section="crypto"><i class="fab fa-bitcoin"></i> Crypto</button>
+            <button class="market-tab" data-section="etf"><i class="fas fa-layer-group"></i> ETFs</button>
+        </div>
+
+        <!-- ============================================================
+        TABLE
+        ============================================================ -->
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Name</th>
+                        <th>Price</th>
+                        <th>Change</th>
+                        <th>Volume</th>
+                        <th>Mkt Cap</th>
+                        <th>Rating</th>
+                    </tr>
+                </thead>
+                <tbody id="stockTableBody">
+                    <!-- Rows will be populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ============================================================
+        CHART SECTION
+        ============================================================ -->
+        <div class="chart-section">
+            <div class="chart-header">
+                <h3><i class="fas fa-chart-area" style="color: var(--blue);"></i> <span id="chartSymbol">AAPL</span> - Price History</h3>
+                <div class="chart-timeframes">
+                    <button class="active" data-period="1d">1D</button>
+                    <button data-period="5d">5D</button>
+                    <button data-period="1mo">1M</button>
+                    <button data-period="3mo">3M</button>
+                    <button data-period="6mo">6M</button>
+                    <button data-period="1y">1Y</button>
+                </div>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="priceChart"></canvas>
+            </div>
+        </div>
+
+        <!-- ============================================================
+        AI ANALYSIS PANEL
+        ============================================================ -->
+        <div class="analysis-panel" id="analysisPanel">
+            <h3><i class="fas fa-robot" style="color: var(--purple);"></i> AI Market Analysis</h3>
+            <div class="content" id="analysisContent">
+                <span class="loading"><i class="fas fa-spinner fa-spin"></i> Loading analysis...</span>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<!-- ============================================================
+TOAST
+============================================================ -->
+<div class="toast" id="toast"></div>
+
+<!-- ============================================================
+JAVASCRIPT
+============================================================ -->
+<script>
+    // ============================================================
+    // STATE
+    // ============================================================
+    let currentSymbol = 'AAPL';
+    let currentPeriod = '1d';
+    let chartInstance = null;
+    const API_BASE = '';
+
+    // ============================================================
+    // MOCK DATA (will be replaced with real API calls)
+    // ============================================================
+    const mockStocks = [
+        { symbol: 'AAPL', name: 'Apple Inc.', price: 189.34, change: 1.23, volume: 45.2, mktCap: '2.95T', sector: 'tech', rating: 'Buy' },
+        { symbol: 'MSFT', name: 'Microsoft Corp.', price: 378.92, change: 0.87, volume: 22.1, mktCap: '2.81T', sector: 'tech', rating: 'Buy' },
+        { symbol: 'GOOGL', name: 'Alphabet Inc.', price: 141.56, change: -0.34, volume: 18.7, mktCap: '1.78T', sector: 'tech', rating: 'Hold' },
+        { symbol: 'AMZN', name: 'Amazon.com Inc.', price: 185.12, change: 2.01, volume: 31.4, mktCap: '1.92T', sector: 'tech', rating: 'Strong Buy' },
+        { symbol: 'NVDA', name: 'NVIDIA Corp.', price: 875.43, change: 3.56, volume: 52.8, mktCap: '2.16T', sector: 'tech', rating: 'Strong Buy' },
+        { symbol: 'META', name: 'Meta Platforms', price: 505.67, change: -1.22, volume: 12.3, mktCap: '1.28T', sector: 'tech', rating: 'Hold' },
+        { symbol: 'TSLA', name: 'Tesla Inc.', price: 248.45, change: -2.45, volume: 88.6, mktCap: '791B', sector: 'energy', rating: 'Sell' },
+        { symbol: 'JPM', name: 'JPMorgan Chase', price: 198.23, change: 0.56, volume: 8.9, mktCap: '572B', sector: 'finance', rating: 'Buy' },
+        { symbol: 'VTI', name: 'Vanguard Total Stock', price: 259.78, change: 0.45, volume: 3.2, mktCap: '--', sector: 'etf', rating: 'Buy' },
+        { symbol: 'BTC-USD', name: 'Bitcoin USD', price: 67890.12, change: -0.42, volume: 24.1, mktCap: '1.33T', sector: 'crypto', rating: 'Hold' },
+        { symbol: 'ETH-USD', name: 'Ethereum USD', price: 3456.78, change: 1.34, volume: 15.6, mktCap: '415B', sector: 'crypto', rating: 'Buy' },
+        { symbol: 'SOL-USD', name: 'Solana USD', price: 167.89, change: 5.67, volume: 8.2, mktCap: '74B', sector: 'crypto', rating: 'Strong Buy' },
+        { symbol: 'SPY', name: 'SPDR S&P 500 ETF', price: 543.21, change: 0.78, volume: 62.5, mktCap: '--', sector: 'etf', rating: 'Buy' },
+        { symbol: 'QQQ', name: 'Invesco QQQ ETF', price: 432.10, change: 0.92, volume: 41.3, mktCap: '--', sector: 'etf', rating: 'Buy' },
+    ];
+
+    // ============================================================
+    // FUNCTIONS
+    // ============================================================
+
+    // Format number
+    function formatNumber(num) {
+        if (num === undefined || num === null) return '--';
+        if (typeof num === 'string') return num;
+        return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatVolume(num) {
+        if (num === undefined || num === null) return '--';
+        if (num >= 1000) return (num / 1000).toFixed(1) + 'M';
+        return num.toFixed(1) + 'M';
+    }
+
+    function getRatingClass(rating) {
+        const map = {
+            'Buy': 'buy',
+            'Sell': 'sell',
+            'Hold': 'hold',
+            'Strong Buy': 'strong',
+            'Neutral': 'hold'
+        };
+        return map[rating] || 'hold';
+    }
+
+    function getSectorIcon(sector) {
+        const map = {
+            'tech': 'microchip',
+            'finance': 'university',
+            'health': 'heartbeat',
+            'energy': 'bolt',
+            'crypto': 'bitcoin',
+            'etf': 'layer-group'
+        };
+        return map[sector] || 'building';
+    }
+
+    function getSectorClass(sector) {
+        const map = {
+            'tech': 'tech',
+            'finance': 'finance',
+            'health': 'tech',
+            'energy': 'energy',
+            'crypto': 'crypto',
+            'etf': 'finance'
+        };
+        return map[sector] || 'tech';
+    }
+
+    // ============================================================
+    // RENDER TABLE
+    // ============================================================
+    function renderTable(data, filter = 'all') {
+        const tbody = document.getElementById('stockTableBody');
+        let filtered = data;
         
-        Args:
-            symbol: Stock/crypto symbol to analyze
-            news_items: List of news content to analyze
-            model: OpenRouter model to use
-            **kwargs: Additional arguments passed to stream_analysis
-            
-        Yields:
-            Server-Sent Events (SSE) formatted strings
-        """
-        combined_news = "\n---\n".join(news_items)
-        yield from self.stream_analysis(symbol, combined_news, model, **kwargs)
-    
-    def stream_analysis_with_context(
-        self,
-        symbol: str,
-        news: str,
-        context: str = None,
-        **kwargs
-    ) -> Generator[str, None, None]:
-        """
-        Stream analysis with additional context.
+        if (filter !== 'all') {
+            filtered = data.filter(item => item.sector === filter);
+        }
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--text-muted); padding: 2rem;">No stocks found in this category</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(item => {
+            const changeClass = item.change >= 0 ? 'positive' : 'negative';
+            const changeIcon = item.change >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+            const ratingClass = getRatingClass(item.rating);
+            const sectorIcon = getSectorIcon(item.sector);
+            const sectorClass = getSectorClass(item.sector);
+
+            return `
+                <tr onclick="selectSymbol('${item.symbol}')" style="cursor:pointer;">
+                    <td>
+                        <div class="stock-name">
+                            <div class="icon ${sectorClass}"><i class="fas fa-${sectorIcon}"></i></div>
+                            <div>
+                                <div class="symbol-main">${item.symbol}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${item.name}</td>
+                    <td class="price-cell">$${formatNumber(item.price)}</td>
+                    <td class="change-cell ${changeClass}">
+                        <i class="fas ${changeIcon}"></i> ${item.change >= 0 ? '+' : ''}${item.change.toFixed(2)}%
+                    </td>
+                    <td class="volume-cell">${formatVolume(item.volume)}</td>
+                    <td>${item.mktCap}</td>
+                    <td><span class="rating ${ratingClass}">${item.rating}</span></td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // ============================================================
+    // SELECT SYMBOL
+    // ============================================================
+    function selectSymbol(symbol) {
+        currentSymbol = symbol;
+        document.getElementById('symbolInput').value = symbol;
+        document.getElementById('chartSymbol').textContent = symbol;
         
-        Args:
-            symbol: Stock/crypto symbol to analyze
-            news: News content to analyze
-            context: Additional context (e.g., historical data, technical indicators)
-            **kwargs: Additional arguments passed to stream_analysis
+        // Update table highlight
+        document.querySelectorAll('#stockTableBody tr').forEach(row => {
+            row.style.background = 'transparent';
+            if (row.querySelector('.symbol-main')?.textContent === symbol) {
+                row.style.background = 'var(--blue-bg)';
+            }
+        });
+
+        // Fetch chart data and analysis
+        fetchChartData(symbol, currentPeriod);
+        fetchAnalysis(symbol);
+        updateStats(symbol);
+    }
+
+    // ============================================================
+    // FETCH CHART DATA
+    // ============================================================
+    async function fetchChartData(symbol, period) {
+        try {
+            const response = await fetch(`${API_BASE}/api/stock/${symbol}/ohlc?period=${period}&interval=1d`);
+            const data = await response.json();
             
-        Yields:
-            Server-Sent Events (SSE) formatted strings
-        """
-        if context:
-            enhanced_prompt = f"Context: {context}\n\nNews: {news}"
-            yield from self.stream_analysis(symbol, enhanced_prompt, **kwargs)
-        else:
-            yield from self.stream_analysis(symbol, news, **kwargs)
-
-
-# FastAPI Integration (Optional)
-try:
-    from fastapi import FastAPI
-    from fastapi.responses import StreamingResponse
-    
-    app = FastAPI(title="OpenRouter News Analyzer")
-    streamer = OpenRouterStreamer()
-    
-    @app.get("/analyze/{symbol}")
-    async def analyze_stock(
-        symbol: str,
-        news: str,
-        analysis_type: str = "comprehensive",
-        model: str = "deepseek-ai/DeepSeek-R1"
-    ):
-        """Analyze a stock/crypto using news data."""
-        return StreamingResponse(
-            streamer.stream_analysis(
-                symbol=symbol,
-                news=news,
-                model=model,
-                analysis_type=analysis_type
-            ),
-            media_type="text/event-stream"
-        )
-    
-    @app.get("/analyze-multiple/{symbol}")
-    async def analyze_stock_multiple_news(
-        symbol: str,
-        news_items: List[str],
-        model: str = "deepseek-ai/DeepSeek-R1"
-    ):
-        """Analyze a stock/crypto using multiple news items."""
-        return StreamingResponse(
-            streamer.stream_analysis_multiple_news(
-                symbol=symbol,
-                news_items=news_items,
-                model=model
-            ),
-            media_type="text/event-stream"
-        )
-    
-    logger.info("FastAPI routes registered successfully")
-    
-except ImportError:
-    # FastAPI not installed
-    logger.debug("FastAPI not available - skipping route registration")
-    pass
-
-
-# Example usage
-if __name__ == "__main__":
-    # Simple example usage
-    streamer = OpenRouterStreamer(api_key=os.getenv("OPENROUTER_API_KEY"))
-    
-    # Example 1: Basic analysis
-    print("=== Basic Analysis ===")
-    for event in streamer.stream_analysis(
-        symbol="AAPL",
-        news="Apple releases new iPhone with AI features, stock up 2%",
-        analysis_type="comprehensive"
-    ):
-        print(event, end="")
-    
-    # Example 2: Multiple news items
-    print("\n=== Multiple News Analysis ===")
-    news_items = [
-        "Apple releases new iPhone with AI features",
-        "Apple reports record quarterly earnings",
-        "Analyst upgrades Apple stock to buy"
-    ]
-    for event in streamer.stream_analysis_multiple_news(
-        symbol="AAPL",
-        news_items=news_items,
-        analysis_type="sentiment"
-    ):
-        print(event, end="")
-    
-    # Example 3: With context
-    print("\n=== Analysis with Context ===")
-    context = "AAPL is trading at $180, RSI at 65, 50-day MA at $175"
-    for event in streamer.stream_analysis_with_context(
-        symbol="AAPL",
-        news="New iPhone launches next week",
-        context=context,
-        analysis_type="impact"
-    ):
-        print(event, end="")
+            if (response.ok && data.length > 
