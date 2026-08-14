@@ -5,10 +5,6 @@ services:
     plan: starter
     autoDeploy: true
     buildCommand: |
-      # Install Node.js dependencies for Tailwind
-      npm install
-      # Build Tailwind CSS
-      npm run build:css || npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/output.css --minify
       # Install Python dependencies
       pip install --upgrade pip
       pip install -r requirements.txt
@@ -16,8 +12,6 @@ services:
     healthCheckPath: /api/health
     healthCheckTimeout: 5
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.9
       - key: FLASK_ENV
         value: production
       - key: SESSION_COOKIE_SECURE
@@ -28,9 +22,9 @@ services:
         value: INFO
       - key: CACHE_TTL
         value: 300
-      # Secret keys (set in Render dashboard)
-      - key: REDIS_URL
-        sync: false
+      - key: MONGODB_DB_NAME
+        value: stock_dashboard
+      # Secret keys - set these in Render dashboard
       - key: SECRET_KEY
         sync: false
       - key: GEMINI_API_KEY
@@ -41,7 +35,7 @@ services:
         sync: false
       - key: MONGODB_URI
         sync: false
-      - key: MONGODB_DB_NAME
-        value: stock_dashboard
+      - key: REDIS_URL
+        sync: false
       - key: OPENROUTER_API_KEY
         sync: false
