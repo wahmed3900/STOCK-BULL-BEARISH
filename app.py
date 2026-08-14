@@ -7,7 +7,7 @@ from functools import wraps
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for
 from dotenv import load_dotenv
 import yfinance as yf
-from google import genai
+import google.generativeai as genai  # ✅ Correct import
 
 # Import MongoDB module
 from mongodb import (
@@ -30,7 +30,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', os.urandom(24).hex())
 
 # ============================================================
-# ✅ FIXED: Configure GenAI (Gemini) with google-genai
+# ✅ Configure GenAI (Gemini) - using google.generativeai
 # ============================================================
 try:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -38,7 +38,8 @@ try:
         logger.warning("GEMINI_API_KEY not set - AI features will be disabled")
         gemini_model = None
     else:
-        gemini_model = genai.Client(api_key=api_key)
+        genai.configure(api_key=api_key)
+        gemini_model = genai.GenerativeModel("gemini-1.5-flash")
         logger.info("Gemini AI initialized successfully")
 except Exception as e:
     logger.error(f"Gemini initialization error: {e}")
@@ -165,6 +166,9 @@ def get_ohlc(symbol):
     return jsonify(data), 200
 
 
+# ============================================================
+# ✅ AI-Powered Stock Analysis Route
+# ============================================================
 @app.route('/api/analyze', methods=['POST'])
 def analyze_stock():
     """AI-powered stock analysis using Gemini."""
@@ -177,18 +181,11 @@ def analyze_stock():
     symbol = data.get('symbol', 'AAPL')
     
     try:
-        response = gemini_model.models.generate_content(
-            model='gemini-2.0-flash-exp',
-            contents=f"""
-            Provide a brief investment analysis of {symbol} stock.
-            Include:
-            - Current sentiment (Bullish/Bearish/Neutral)
-            - Key strengths
-            - Key risks
-            - Short-term outlook
-            - Long-term outlook
-            Keep response under 200 words.
-            """
+        response = gemini_model.generate_content(
+            f"Provide a brief investment analysis of {symbol} stock. "
+            f"Include: Current sentiment (Bullish/Bearish/Neutral), "
+            f"Key strengths, Key risks, Short-term outlook, Long-term outlook. "
+            f"Keep response under 200 words."
         )
         return jsonify({
             "symbol": symbol,
@@ -200,6 +197,9 @@ def analyze_stock():
         return jsonify({"error": str(e)}), 500
 
 
+# ============================================================
+# --- Watchlist Routes ---
+# ============================================================
 @app.route('/api/watchlist')
 def get_watchlist_endpoint():
     """Get user's watchlist."""
@@ -243,6 +243,9 @@ def remove_watchlist_stock(symbol):
     return jsonify({"error": "Stock not found in watchlist"}), 404
 
 
+# ============================================================
+# --- User Tier Routes ---
+# ============================================================
 @app.route('/api/user/tier')
 def get_user_tier():
     """Get user's current tier."""
