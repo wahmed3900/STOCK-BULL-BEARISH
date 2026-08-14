@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Dashboard · Bull/Bear</title>
+  <!-- Font Awesome for icons (optional but used in screenshot) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    }
+
+    body {
+      background: #f4f7fc;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    .dashboard {
+      max-width: 1440px;
+      width: 100%;
+      background: white;
+      border-radius: 28px;
+      box-shadow: 0 20px 40px -12px rgba(0, 20, 30, 0.25);
+      padding: 2rem 2rem 1.8rem;
+      transition: all 0.2s;
+    }
+
+    /* header / top bar */
+    .top-bar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      gap: 1rem 0.5rem;
+    }
+
+    .top-bar h1 {
+      font-size: 1.9rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: #0b1a2b;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .top-bar h1 i {
+      color: #2b6ef0;
+      font-size: 1.8rem;
+    }
+
+    .analyze-section {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      background: #f0f4fe;
+      padding: 0.25rem 0.25rem 0.25rem 1.2rem;
+      border-radius: 60px;
+      border: 1px solid #d9e2ef;
+    }
+
+    .analyze-section span {
+      color: #1f3a5f;
+      font-weight: 500;
+      font-size: 0.95rem;
+    }
+
+    .analyze-section input {
+      border: none;
+      background: transparent;
+      padding: 0.5rem 0.2rem;
+      font-weight: 500;
+      width: 70px;
+      outline: none;
+      color: #0b1a2b;
+      font-size: 0.95rem;
+    }
+
+    .analyze-section input::placeholder {
+      color: #7a8aa0;
+      font-weight: 400;
+    }
+
+    .analyze-btn {
+      background: #1a3b6b;
+      border: none;
+      color: white;
+      font-weight: 600;
+      padding: 0.6rem 1.4rem;
+      border-radius: 40px;
+      font-size: 0.9rem;
+      cursor: default;
+      letter-spacing: 0.3px;
+      box-shadow: 0 4px 8px rgba(26, 59, 107, 0.15);
+      transition: 0.1s ease;
+    }
+
+    .analyze-btn i {
+      margin-right: 6px;
+    }
+
+    .help-link {
+      color: #3a6bb0;
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-left: 0.3rem;
+      text-decoration: none;
+      border-bottom: 1px dashed #b2c9e5;
+    }
+
+    .help-link i {
+      font-size: 0.8rem;
+      margin-right: 4px;
+    }
+
+    /* stock header (AAPL) */
+    .stock-header {
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .stock-header h2 {
+      font-size: 2.2rem;
+      font-weight: 650;
+      color: #0b1a2b;
+      letter-spacing: -0.02em;
+    }
+
+    .stock-header .badge {
+      background: #eef3fa;
+      padding: 0.25rem 1rem;
+      border-radius: 30px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #1d3b5e;
+    }
+
+    .stock-header .badge i {
+      margin-right: 5px;
+    }
+
+    /* table wrapper */
+    .table-wrapper {
+      overflow-x: auto;
+      margin: 1.5rem 0 1.8rem;
+      border-radius: 18px;
+      border: 1px solid #e7edf5;
+      background: white;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.01);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      min-width: 1000px;
+      white-space: nowrap;
+    }
+
+    th {
+      background: #f8faff;
+      color: #1d3a5e;
+      font-weight: 600;
+      padding: 0.9rem 0.6rem;
+      text-align: left;
+      border-bottom: 1px solid #dee7f2;
+      letter-spacing: 0.02em;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+    }
+
+    td {
+      padding: 0.8rem 0.6rem;
+      border-bottom: 1px solid #edf2f9;
+      color: #162b44;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .ticker-icon {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .ticker-icon i {
+      font-size: 1rem;
+      width: 1.4rem;
+      text-align: center;
+    }
+
+    .price {
+      font-weight: 600;
+    }
+
+    .chg-positive {
+      color: #0b7e4b;
+      background: #e2f3ea;
+      padding: 0.2rem 0.5rem;
+      border-radius: 30px;
+      font-weight: 500;
+      display: inline-block;
+    }
+
+    .chg-negative {
+      color: #b13a4b;
+      background: #fde9ec;
+      padding: 0.2rem 0.5rem;
+      border-radius: 30px;
+      font-weight: 500;
+      display: inline-block;
+    }
+
+    .rating-buy {
+      background: #d5f0e3;
+      color: #0b6e45;
+      padding: 0.2rem 0.7rem;
+      border-radius: 40px;
+      font-weight: 600;
+      font-size: 0.7rem;
+      display: inline-block;
+    }
+
+    .rating-sell {
+      background: #fad6db;
+      color: #ad2f40;
+      padding: 0.2rem 0.7rem;
+      border-radius: 40px;
+      font-weight: 600;
+      font-size: 0.7rem;
+      display: inline-block;
+    }
+
+    .rating-neutral {
+      background: #eaeef5;
+      color: #3b5a7a;
+      padding: 0.2rem 0.7rem;
+      border-radius: 40px;
+      font-weight: 600;
+      font-size: 0.7rem;
+      display: inline-block;
+    }
+
+    .rating-strong {
+      background: #b2d9f0;
+      color: #05427a;
+      padding: 0.2rem 0.7rem;
+      border-radius: 40px;
+      font-weight: 600;
+      font-size: 0.7rem;
+      display: inline-block;
+    }
+
+    .mkt-cap, .pe, .eps, .employees, .sector {
+      font-size: 0.75rem;
+    }
+
+    .sector {
+      max-width: 100px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* analysis card */
+    .analysis-card {
+      background: #f5f9ff;
+      border-radius: 24px;
+      padding: 1.2rem 1.8rem;
+      margin: 1.8rem 0 1.5rem;
+      border-left: 5px solid #2b6ef0;
+    }
+
+    .analysis-card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #1b3554;
+      margin-bottom: 0.4rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .analysis-card h3 i {
+      color: #2b6ef0;
+    }
+
+    .analysis-card p {
+      color: #1d3858;
+      line-height: 1.6;
+      font-size: 0.95rem;
+      max-width: 780px;
+    }
+
+    /* action row: general + filters */
+    .action-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      margin: 1.2rem 0 0.8rem;
+      gap: 0.8rem;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+
+    .btn-group button {
+      background: white;
+      border: 1px solid #d0dcee;
+      padding: 0.5rem 1.4rem;
+      border-radius: 40px;
+      font-weight: 500;
+      font-size: 0.8rem;
+      color: #1d3b5e;
+      cursor: default;
+      transition: 0.1s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-group button i {
+      font-size: 0.8rem;
+      color: #46658a;
+    }
+
+    .btn-group .primary-btn {
+      background: #1a3b6b;
+      border: 1px solid #1a3b6b;
+      color: white;
+    }
+
+    .btn-group .primary-btn i {
+      color: white;
+    }
+
+    /* filter chips */
+    .filter-section {
+      margin-top: 0.4rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.4rem 0.9rem;
+      padding: 0.6rem 0 0.2rem;
+      border-top: 1px solid #e3ebf6;
+    }
+
+    .filter-label {
+      font-weight: 600;
+      color: #1a3455;
+      font-size: 0.75rem;
+      letter-spacing: 0.03em;
+      margin-right: 0.2rem;
+    }
+
+    .filter-chip {
+      background: #edf3fc;
+      padding: 0.3rem 1rem;
+      border-radius: 40px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: #1d3d63;
+      border: 1px solid transparent;
+      transition: 0.1s;
+      cursor: default;
+    }
+
+    .filter-chip i {
+      margin-right: 5px;
+      opacity: 0.7;
+      font-size: 0.6rem;
+    }
+
+    .filter-chip.active {
+      background: #d4e2fa;
+      border-color: #82a7d6;
+    }
+
+    .filter-more {
+      color: #2b6ef0;
+      font-weight: 500;
+      font-size: 0.7rem;
+      margin-left: 0.2rem;
+    }
+
+    /* footer / micro */
+    .footnote {
+      margin-top: 1.8rem;
+      color: #6883a0;
+      font-size: 0.7rem;
+      border-top: 1px solid #e0eaf5;
+      padding-top: 1.2rem;
+      text-align: right;
+      letter-spacing: 0.02em;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
+    .footnote span i {
+      margin-right: 6px;
+    }
+
+    /* responsive */
+    @media (max-width: 700px) {
+      .dashboard {
+        padding: 1.2rem;
+      }
+      .top-bar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .analyze-section {
+        width: 100%;
+        justify-content: space-between;
+        border-radius: 40px;
+        padding-left: 1rem;
+      }
+      .analyze-section input {
+        width: 80px;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="dashboard">
+  <!-- header: Bull/Bear Dashboard + Analyze -->
+  <div class="top-bar">
+    <h1>
+      <i class="fas fa-chart-line"></i> Bull/Bear Dashboard
+    </h1>
+    <div class="analyze-section">
+      <span><i class="fas fa-search" style="margin-right: 6px; color: #3a6bb0;"></i> Analyze a Stock</span>
+      <input type="text" value="AA" placeholder="Symbol" readonly>
+      <button class="analyze-btn"><i class="fas fa-arrow-right"></i> Analyze</button>
+      <a href="#" class="help-link"><i class="far fa-question-circle"></i> Need help?</a>
+    </div>
+  </div>
+
+  <!-- Stock title AAPL -->
+  <div class="stock-header">
+    <h2>AAPL</h2>
+    <span class="badge"><i class="fas fa-microchip"></i> Technology</span>
+  </div>
+
+  <!-- Table : exactly as screenshot (with icons, ratings) -->
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Overview</th><th>Ticker</th><th>Price</th><th>CHG %</th><th>CHG</th>
+          <th>TECHNICAL RATING</th><th>VOL</th><th>VOLUME*PRICE</th>
+          <th>MKT CAP</th><th>P/E</th><th>EPS (TTM)</th><th>EMPLOYEES</th><th>SECTOR</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- row 1: AAPL -->
+        <tr>
+          <td><span class="ticker-icon"><i class="fas fa-chart-simple" style="color:#2b6ef0;"></i> 📈 A</span></td>
+          <td><strong>AAPL</strong></td>
+          <td class="price">149.29 USD</td>
+          <td><span class="chg-positive">+0.71%</span></td>
+          <td>+1.05 USD</td>
+          <td><span class="rating-buy"><i class="fas fa-thumbs-up"></i> Buy</span></td>
+          <td>1.03M</td>
+          <td>153.29 M</td>
+          <td>42.16 B USD</td>
+          <td>29.98</td>
+          <td>5.00 USD</td>
+          <td>18.1 K</td>
+          <td class="sector">Health Technol...</td>
+        </tr>
+        <!-- row 2: AA E -->
+        <tr>
+          <td><span class="ticker-icon"><i class="fas fa-rotate-left" style="color:#b13a4b;"></i> 🔄 AA E</span></td>
+          <td><strong>AA</strong></td>
+          <td class="price">49.59 USD</td>
+          <td><span class="chg-negative">-3.18%</span></td>
+          <td>-1.63 USD</td>
+          <td><span class="rating-sell"><i class="fas fa-thumbs-down"></i> Sell</span></td>
+          <td>7.34 M</td>
+          <td>363.8 M</td>
+          <td>13.09 B USD</td>
+          <td>10.17</td>
+          <td>4.91 USD</td>
+          <td>14.9 K</td>
+          <td class="sector">Non-Energy Min...</td>
+        </tr>
+        <!-- row 3: AAA E -->
+        <tr>
+          <td><span class="ticker-icon"><i class="fas fa-landmark" style="color:#6b7f99;"></i> 🏦 AAA E</span></td>
+          <td><strong>AAA</strong></td>
+          <td class="price">24.96 USD</td>
+          <td><span class="chg-positive">+0.02%</span></td>
+          <td>0.00 USD</td>
+          <td><span class="rating-sell">Sell</span></td>
+          <td>4.88 K</td>
+          <td>121.86 K</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td class="sector">Miscellaneous</td>
+        </tr>
+        <!-- row 4: AAA C -->
+        <tr>
+          <td><span class="ticker-icon"><i class="fas fa-cart-shopping" style="color:#2b6ef0;"></i> 🛒 AAA C</span></td>
+          <td><strong>AAA</strong></td>
+          <td class="price">20.09 USD</td>
+          <td><span class="chg-positive">+0.00%</span></td>
+          <td>0.00 USD</td>
+          <td><span class="rating-buy">Buy</span></td>
+          <td>16</td>
+          <td>321</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td class="sector">Miscellaneous</td>
+        </tr>
+        <!-- row 5: AAAD E -->
+        <tr>
+          <td><span class="ticker-icon"><i class="fas fa-cart-plus" style="color:#6b7f99;"></i> 🛒 AAAD E</span></td>
+          <td><strong>AAAD</strong></td>
+          <td class="price">49.67 USD</td>
+          <td><span class="chg-positive">+0.32%</span></td>
+          <td>+0.16 USD</td>
+          <td><span class="rating-neutral">Neutral</span></td>
+          <td>11</td>
+          <td>546</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td class="sector">Miscellaneous</td>
+        </tr>
+        <!-- row 6: AAAPE -->
+        <tr>
+          <td><span class="ticker-icon"><i class="fas fa-cart-shopping" style="color:#2b6ef0;"></i> 🛒 AAAPE</span></td>
+          <td><strong>AAAPE</strong></td>
+          <td class="price">25.35 USD</td>
+          <td><span class="chg-negative">-0.02%</span></td>
+          <td>-0.00 USD</td>
+          <td><span class="rating-buy">Buy</span></td>
+          <td>10.83 K</td>
+          <td>274.54 K</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td class="sector">Miscellaneous</td>
+        </tr>
+        <!-- row 7: AACB E -->
+        <tr>
+          <td><span class="ticker-icon"><i class="fas fa-building-columns" style="color:#1f8b4c;"></i> 🛒 AACB E</span></td>
+          <td><strong>AACB</strong></td>
+          <td class="price">10.58 USD</td>
+          <td><span class="chg-positive">+0.43%</span></td>
+          <td>+0.04 USD</td>
+          <td><span class="rating-strong"><i class="fas fa-fire"></i> Strong Buy</span></td>
+          <td>859.61 K</td>
+          <td>9.09 M</td>
+          <td>292.66 M USD</td>
+          <td>74.89</td>
+          <td>0.14 USD</td>
+          <td>1</td>
+          <td class="sector">Finance</td>
+        </tr>
+        <!-- row 8: AACGE -->
+        <tr>
+          <td><span class="ticker-icon"><i class="fas fa-arrow-trend-up" style="color:#b13a4b;"></i> 🛒 AACGE</span></td>
+          <td><strong>AACGE</strong></td>
+          <td class="price">1.11 USD</td>
+          <td><span class="chg-positive">+21.99%</span></td>
+          <td>+0.20 USD</td>
+          <td><span class="rating-strong">Strong Buy</span></td>
+          <td>13.2 M</td>
+          <td>14.66 M</td>
+          <td>39.15 M USD</td>
+          <td>—</td>
+          <td>-0.21 USD</td>
+          <td>1.13 K</td>
+          <td class="sector">Commercial Sector</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Analysis card: AAPL Analysis -->
+  <div class="analysis-card">
+    <h3><i class="fas fa-chart-pie"></i> AAPL Analysis</h3>
+    <p>Apple Inc. (AAPL) shows strong fundamentals with consistent revenue growth from iPhone and Services segments. The company's AI initiatives and expanding ecosystem position it well for future growth.</p>
+  </div>
+
+  <!-- Buttons: General + Filters -->
+  <div class="action-row">
+    <div class="btn-group">
+      <button class="primary-btn"><i class="fas fa-bars"></i> General</button>
+      <button><i class="fas fa-sliders-h"></i> Filters</button>
+    </div>
+    <div style="font-size:0.8rem; color:#3d6089;"><i class="far fa-clock"></i> updated: Aug 13, 2026</div>
+  </div>
+
+  <!-- Filter chips (exactly as screenshot) -->
+  <div class="filter-section">
+    <span class="filter-label"><i class="fas fa-tag"></i> Filter Options:</span>
+    <span class="filter-chip active">General</span>
+    <span class="filter-chip">Employees</span>
+    <span class="filter-chip">Sectors</span>
+    <span class="filter-chip">Financials</span>
+    <span class="filter-chip">Technology</span>
+    <span class="filter-chip">Consumer Discretionary</span>
+    <span class="filter-chip">Energy</span>
+    <span class="filter-chip">Utilities</span>
+    <span class="filter-chip">Real Estate</span>
+    <span class="filter-chip">Healthcare</span>
+    <span class="filter-chip">Communication Services</span>
+    <span class="filter-chip">Consumer Staples</span>
+    <span class="filter-chip">Materials</span>
+    <span class="filter-chip">Basic Materials</span>
+    <span class="filter-chip">Industrials</span>
+    <span class="filter-chip">Energy</span>
+    <span class="filter-chip">Utilities</span>
+    <span class="filter-chip">Real Estate</span>
+    <span class="filter-chip">Healthcare</span>
+    <span class="filter-chip">Communications</span>
+    <span class="filter-chip">Consumer Discretionary</span>
+    <span class="filter-chip">Energy</span>
+    <span class="filter-chip">Utilities</span>
+    <span class="filter-chip">Real Estate</span>
+    <span class="filter-chip">Healthcare</span>
+    <span class="filter-more"><i class="fas fa-ellipsis-h"></i> more</span>
+  </div>
+
+  <!-- tiny footnote -->
+  <div class="footnote">
+    <span><i class="fas fa-database"></i> Data delayed · 18:30 UTC</span>
+    <span><i class="fas fa-bolt"></i> Bull/Bear v2.4</span>
+  </div>
+</div>
+</body>
+</html>
