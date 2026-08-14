@@ -371,7 +371,7 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=port, debug=debug)
 
 
-backend flask app
+# backend flask app
 @app.route('/stream/<symbol>', methods=['GET'])
 def stream_ticker(symbol):
     """Stream live price updates via Server-Sent Events"""
