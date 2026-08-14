@@ -7,7 +7,7 @@ from functools import wraps
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for
 from dotenv import load_dotenv
 import yfinance as yf
-import google.generativeai as genai
+from google import genai
 
 # Import MongoDB module
 from mongodb import (
