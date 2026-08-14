@@ -4,17 +4,10 @@ import logging
 from datetime import datetime, timezone
 from functools import wraps
 
-from flask import Flask, jsonify, request, render_template, session, redirect, url_for
+from flask import Flask, jsonify, request, render_template
 from dotenv import load_dotenv
 import yfinance as yf
-import google.generativeai as genai  # ✅ Correct import
-
-# Import MongoDB module
-from mongodb import (
-    init_db, get_tier, set_tier, get_watchlist, add_ticker, 
-    remove_ticker, get_watchlist_count, can_add_stock, is_pro_user,
-    FREE_TIER_LIMIT, check_connection
-)
+import google.generativeai as genai
 
 # Load environment variables
 load_dotenv()
@@ -30,7 +23,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', os.urandom(24).hex())
 
 # ============================================================
-# ✅ Configure GenAI (Gemini) - using google.generativeai
+# ✅ Configure GenAI (Gemini)
 # ============================================================
 try:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -45,34 +38,11 @@ except Exception as e:
     logger.error(f"Gemini initialization error: {e}")
     gemini_model = None
 
-# Initialize MongoDB on startup
-try:
-    init_db()
-    logger.info("MongoDB initialized successfully")
-except Exception as e:
-    logger.error(f"MongoDB initialization error: {e}")
-
-
-# ============================================================
-# --- Decorators ---
-# ============================================================
-def require_pro(f):
-    """Decorator to restrict endpoints to Pro users."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        tier = get_tier()
-        if tier != "pro":
-            return jsonify({
-                "error": "Pro feature required",
-                "message": "Upgrade to Pro to access this feature"
-            }), 403
-        return f(*args, **kwargs)
-    return decorated_function
-
 
 # ============================================================
 # --- Helper Functions ---
 # ============================================================
+
 def fetch_ohlc(symbol, period="1mo", interval="1d"):
     """Pull OHLC candles from yfinance."""
     try:
@@ -119,11 +89,42 @@ def get_stock_info(symbol):
             "pe_ratio": info.get("trailingPE", 0),
             "eps": info.get("trailingEps", 0),
             "volume": info.get("volume", 0),
-            "sector": info.get("sector", "Unknown")
+            "sector": info.get("sector", "Unknown"),
+            "name": info.get("longName", symbol.upper())
         }
     except Exception as e:
         logger.error(f"Error fetching stock info for {symbol}: {e}")
         return None
+
+
+def get_market_indices():
+    """Get major market indices data."""
+    indices = {
+        "^GSPC": "S&P 500",
+        "^IXIC": "NASDAQ",
+        "^DJI": "Dow Jones",
+        "^VIX": "VIX",
+        "BTC-USD": "Bitcoin",
+        "ETH-USD": "Ethereum"
+    }
+    result = {}
+    for symbol, name in indices.items():
+        try:
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="1d")
+            if not hist.empty:
+                price = float(hist["Close"].iloc[-1])
+                change = float(hist["Close"].iloc[-1] - hist["Open"].iloc[0])
+                change_pct = (change / hist["Open"].iloc[0]) * 100 if hist["Open"].iloc[0] != 0 else 0
+                result[name] = {
+                    "symbol": symbol,
+                    "price": price,
+                    "change": change,
+                    "change_percent": change_pct
+                }
+        except Exception as e:
+            logger.error(f"Error fetching {symbol}: {e}")
+    return result
 
 
 # ============================================================
@@ -137,7 +138,6 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "gemini_available": gemini_model is not None,
-        "mongodb_connected": check_connection() if check_connection else False,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }), 200
 
@@ -166,6 +166,31 @@ def get_ohlc(symbol):
     return jsonify(data), 200
 
 
+@app.route('/api/market/indices')
+def market_indices():
+    """Get major market indices."""
+    data = get_market_indices()
+    return jsonify(data), 200
+
+
+@app.route('/api/search/<query>')
+def search_stocks(query):
+    """Search for stocks matching query."""
+    try:
+        # Get a list of popular stocks
+        popular = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "JPM", "VTI", "BTC-USD", "ETH-USD", "SOL-USD"]
+        results = []
+        for symbol in popular:
+            if query.upper() in symbol:
+                info = get_stock_info(symbol)
+                if info:
+                    results.append(info)
+        return jsonify(results), 200
+    except Exception as e:
+        logger.error(f"Search error: {e}")
+        return jsonify([]), 200
+
+
 # ============================================================
 # ✅ AI-Powered Stock Analysis Route
 # ============================================================
@@ -178,11 +203,18 @@ def analyze_stock():
         }), 503
     
     data = request.json
-    symbol = data.get('symbol', 'AAPL')
+    symbol = data.get('symbol', 'AAPL').upper()
     
     try:
+        # Get real stock data
+        stock_info = get_stock_info(symbol)
+        price_info = ""
+        if stock_info:
+            price_info = f"Current price: ${stock_info.get('price', 'N/A')}, Change: {stock_info.get('change_percent', 0):.2f}%"
+        
         response = gemini_model.generate_content(
             f"Provide a brief investment analysis of {symbol} stock. "
+            f"{price_info} "
             f"Include: Current sentiment (Bullish/Bearish/Neutral), "
             f"Key strengths, Key risks, Short-term outlook, Long-term outlook. "
             f"Keep response under 200 words."
@@ -190,80 +222,12 @@ def analyze_stock():
         return jsonify({
             "symbol": symbol,
             "analysis": response.text,
+            "price_info": price_info,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }), 200
     except Exception as e:
         logger.error(f"Gemini analysis error: {e}")
         return jsonify({"error": str(e)}), 500
-
-
-# ============================================================
-# --- Watchlist Routes ---
-# ============================================================
-@app.route('/api/watchlist')
-def get_watchlist_endpoint():
-    """Get user's watchlist."""
-    watchlist = get_watchlist()
-    return jsonify({
-        "watchlist": watchlist,
-        "count": len(watchlist),
-        "limit": FREE_TIER_LIMIT,
-        "is_pro": is_pro_user()
-    }), 200
-
-
-@app.route('/api/watchlist/add', methods=['POST'])
-def add_watchlist_stock():
-    """Add a stock to the watchlist."""
-    data = request.json
-    symbol = data.get('symbol', '').upper()
-    
-    if not symbol:
-        return jsonify({"error": "Symbol is required"}), 400
-    
-    # Check if user can add more stocks
-    if not can_add_stock():
-        return jsonify({
-            "error": "Watchlist limit reached",
-            "message": f"Free tier allows only {FREE_TIER_LIMIT} stocks. Upgrade to Pro for unlimited."
-        }), 403
-    
-    result = add_ticker(symbol)
-    if result:
-        return jsonify({"message": f"{symbol} added to watchlist"}), 200
-    return jsonify({"error": "Failed to add stock"}), 400
-
-
-@app.route('/api/watchlist/remove/<symbol>', methods=['DELETE'])
-def remove_watchlist_stock(symbol):
-    """Remove a stock from the watchlist."""
-    result = remove_ticker(symbol.upper())
-    if result:
-        return jsonify({"message": f"{symbol} removed from watchlist"}), 200
-    return jsonify({"error": "Stock not found in watchlist"}), 404
-
-
-# ============================================================
-# --- User Tier Routes ---
-# ============================================================
-@app.route('/api/user/tier')
-def get_user_tier():
-    """Get user's current tier."""
-    return jsonify({
-        "tier": get_tier(),
-        "watchlist_count": get_watchlist_count(),
-        "max_allowed": FREE_TIER_LIMIT if get_tier() == "free" else "unlimited"
-    }), 200
-
-
-@app.route('/api/user/upgrade', methods=['POST'])
-@require_pro
-def upgrade_to_pro():
-    """Upgrade user to Pro (simulated)."""
-    result = set_tier("pro")
-    if result:
-        return jsonify({"message": "Successfully upgraded to Pro!", "tier": "pro"}), 200
-    return jsonify({"error": "Failed to upgrade"}), 500
 
 
 # ============================================================
