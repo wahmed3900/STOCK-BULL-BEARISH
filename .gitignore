@@ -1,0 +1,15 @@
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+.env.yaml
+*.env
+**/service-account*.json
+**/*secret*
+**/*api*key*
+test_groq.py
+grep
+script.js
+style.css
+wsgi.py
