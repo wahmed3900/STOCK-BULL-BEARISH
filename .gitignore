@@ -1,15 +1,10 @@
-
-# Secrets — never commit
+node_modules/
+.next/
+out/
 .env
-.env.*
-!.env.example
-.env.yaml
-*.env
-**/service-account*.json
-**/*secret*
-**/*api*key*
-test_groq.py
-grep
-script.js
-style.css
-wsgi.py
+.env.local
+.env.*.local
+.DS_Store
+*.log
+.vercel
+next-env.d.ts
