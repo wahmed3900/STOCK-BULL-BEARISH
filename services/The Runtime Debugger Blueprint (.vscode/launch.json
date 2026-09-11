@@ -1,0 +1,26 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Flask (Local Fallback Mode)",
+            "type": "python",
+            "request": "launch",
+            "module": "flask",
+            "env": {
+                "FLASK_APP": "app.py",
+                "FLASK_DEBUG": "1",
+                "REDIS_URL": "memory://",
+                "MONGO_URI": "mongodb://localhost:27017/prod_fin_db"
+            },
+            "args": [
+                "run",
+                "--no-debugger",
+                "--no-reload",
+                "--port",
+                "5000"
+            ],
+            "jinja": true,
+            "preLaunchTask": "Inspect Active Code Formatting"
+        }
+    ]
+}

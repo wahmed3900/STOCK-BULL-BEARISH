@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "stock-dashboard/node_modules"
+		},
+		{
+			"path": "stock-dashboard/templates"
+		},
+		{
+			"path": "stock-dashboard/static"
+		},
+		{
+			"path": "stock-dashboard/services"
+		}
+	]
+}

@@ -1,11 +1,68 @@
-node_modules/
-.next/
-out/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+.venv/
 .env
 .env.local
 .env.*.local
-.DS_Store
-*.log
+
+# Node
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
 .vercel
 next-env.d.ts
-.next/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+app_log.txt
+
+# Python build
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+
+# Project specific
+*.save
+*.zip
+*.tar.gz
+
+# Junk / accidental files
+.gitingorance
+docker-compose.ymlnano
+*.nano
+subfolders
+folder
+and
+gitignore
+promo-video/.thumbnails/

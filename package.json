@@ -1,22 +1,43 @@
 {
-  "name": "stock-dashboard-frontend",
+  "name": "stock-dashboard",
   "version": "1.0.0",
   "private": true,
+  "description": "A Flask dashboard that tracks stocks and gives an AI-generated bull/bearish verdict on each one using a free OpenRouter model. Free tier is capped at 3 stocks; Pro (demo-gated, no real payment) unlocks unlimited stocks + AI analysis.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "baseline-browser-mapping": "^2.11.7",
+    "browserslist": "^4.28.7",
+    "caniuse-lite": "^1.0.30001806",
+    "dotenv": "^17.4.2",
+    "electron-to-chromium": "^1.5.398",
+    "escalade": "^3.2.0",
+    "fraction.js": "^5.3.4",
+    "nanoid": "^3.3.16",
     "next": "^16.0.0",
+    "node-releases": "^2.0.51",
+    "openai": "^6.49.0",
+    "picocolors": "^1.1.1",
+    "postcss-value-parser": "^4.2.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "source-map-js": "^1.2.1",
+    "together-ai": "^0.3.0",
+    "update-browserslist-db": "^1.2.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.25",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.6.0"
   }
 }

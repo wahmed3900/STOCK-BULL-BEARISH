@@ -1,0 +1,46 @@
+{
+	"folders": [
+		{
+			"path": "../../__pycache__"
+		},
+		{
+			"path": "../../{     \"python.analysis.diagnosticSeverity\": {         \"reportUnusedImport\": \"warning\",  "
+		},
+		{
+			"path": "../../#"
+		},
+		{
+			"path": "../../a"
+		},
+		{
+			"path": "../../Created"
+		},
+		{
+			"path": "../../environment"
+		},
+		{
+			"path": "../../google-cloud-sdk"
+		},
+		{
+			"path": "../../node_modules"
+		},
+		{
+			"path": "../../promo-video"
+		},
+		{
+			"path": "../../services"
+		},
+		{
+			"path": "../../static"
+		},
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../venv"
+		},
+		{
+			"path": "../../virtual"
+		}
+	]
+}

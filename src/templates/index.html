@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="dashboard">
+
+    <section class="search-box">
+        <h2>🔍 Analyze a Stock</h2>
+
+        <form action="/analyze" method="POST">
+            <input
+                type="text"
+                name="ticker"
+                placeholder="Enter stock symbol (AAPL, TSLA, NVDA)"
+                required
+            >
+            <button type="submit">Analyze</button>
+        </form>
+
+        <button id="helpDialogButton" type="button" class="info-btn">
+            Need help?
+        </button>
+
+        <dialog id="simpleDialog" class="simple-dialog">
+            <div class="dialog-header">
+                <h3>How to use the dashboard</h3>
+                <button type="button" data-dialog-close class="dialog-close">&times;</button>
+            </div>
+            <div class="dialog-body">
+                <p>Enter a stock ticker like <strong>AAPL</strong>, <strong>TSLA</strong>, or <strong>NVDA</strong> and click Analyze to see a quick sentiment summary.</p>
+                <p>This dialog is a simple reusable overlay that you can extend for confirmation messages, alerts, or onboarding text.</p>
+            </div>
+            <div class="dialog-actions">
+                <button type="button" data-dialog-close class="dialog-button">Close</button>
+            </div>
+        </dialog>
+    </section>
+
+    {% if result %}
+    <section class="analysis-results">
+
+        <h2>📊 Analysis for {{ result.ticker }}</h2>
+
+        <div class="result-card">
+            <p><strong>Price:</strong> {{ result.price }}</p>
+            <p><strong>Sentiment:</strong> {{ result.sentiment }}</p>
+            <p><strong>Summary:</strong> <span id="summary">{{ result.summary }}</span></p>
+            <div id="live-stream" data-symbol="{{ result.ticker }}" aria-live="polite"></div>
+        </div>
+
+        <form action="/reanalyze" method="POST">
+            <input type="hidden" name="ticker" value="{{ result.ticker }}">
+            <button type="submit">Re‑Analyze</button>
+        </form>
+
+    </section>
+    {% endif %}
+
+</div>
+
+{% endblock %}

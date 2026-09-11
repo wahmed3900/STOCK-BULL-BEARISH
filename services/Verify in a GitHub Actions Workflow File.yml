@@ -1,0 +1,11 @@
+name: Test Variables
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify-vars:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print Public Variable
+        run: echo "The variable value is ${{ vars.YOUR_VARIABLE_NAME }}"

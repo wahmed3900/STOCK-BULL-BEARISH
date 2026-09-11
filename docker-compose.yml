@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=production
+      - PORT=5000
+    env_file:
+      - .env
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - stock-network
+
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - stock-network
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - stock-network
+
+networks:
+  stock-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
