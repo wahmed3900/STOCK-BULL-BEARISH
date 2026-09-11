@@ -1,6 +1,7 @@
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ??
   "https://stock-dashboard-backend-634072894074.us-west4.run.app";
+  
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
