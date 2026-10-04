@@ -10,4 +10,4 @@ stripe==15.6.1
 pydantic[email]>=2.6
 google-genai
 anthropic>=0.25
-google-genai
+requests>=2.31
