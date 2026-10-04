@@ -16,6 +16,10 @@ from mongodb import (
     FREE_TIER_LIMIT, check_connection
 )
 
+# Trading blueprints
+from paper_trading import paper_bp
+from live_trading import live_bp
+
 # Load environment variables
 load_dotenv()
 
@@ -28,6 +32,10 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', os.urandom(24).hex())
+
+# Register blueprints
+app.register_blueprint(paper_bp, url_prefix='/api/paper')
+app.register_blueprint(live_bp, url_prefix='/api/live')
 
 # Configure GenAI (Gemini)
 try:
