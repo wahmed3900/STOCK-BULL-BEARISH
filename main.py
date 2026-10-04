@@ -8,7 +8,10 @@
 
 # ---------- IMPORTS ----------
 import os
+import hmac
 import math
+import random
+import re
 import uuid
 import asyncio
 import logging
@@ -61,6 +64,7 @@ CLAUDE_MODEL       = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5")
 AI_SUMMARY_TTL_S   = int(os.getenv("AI_SUMMARY_TTL_S", "600"))  # frontend polls every 60s; don't pay for 2 AI calls each time
 AI_ORDER           = [p.strip().lower() for p in os.getenv("AI_ORDER", "gemini,claude").split(",") if p.strip()]  # first = primary, next = fallback
 AI_FAIL_COOLDOWN_S = int(os.getenv("AI_FAIL_COOLDOWN_S", "300"))  # skip a failing provider for 5 min
+FREE_AI_SUMMARIES  = os.getenv("FREE_AI_SUMMARIES", "false").lower() in ("true", "1", "yes", "on")  # true = AI for everyone
 AI_ENABLED         = os.getenv("AI_ENABLED", "true").lower() not in ("false", "0", "no", "off")  # false = free rule-based summaries only
 
 SMTP_HOST    = os.getenv("SMTP_HOST")
@@ -69,6 +73,19 @@ SMTP_USER    = os.getenv("SMTP_USER")
 SMTP_PASS    = os.getenv("SMTP_PASS")
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://stock-dashboard-frontend-one.vercel.app")
+
+# Shared secret between the Next.js server and this API (see _user_from_frontend)
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
+
+# Text-message alerts (Twilio). SMS is switched off until all three are set.
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")  # e.g. +19165550123, or a Messaging Service SID (MG...)
+SMS_DAILY_LIMIT    = int(os.getenv("SMS_DAILY_LIMIT", "10"))  # per user, keeps SMS costs bounded
+
+# Premium limits
+MAX_WATCHLIST = int(os.getenv("MAX_WATCHLIST", "50"))
+MAX_ALERTS    = int(os.getenv("MAX_ALERTS", "25"))
 
 RATE_LIMIT_REQUESTS  = int(os.getenv("RATE_LIMIT_REQUESTS", "60"))
 RATE_LIMIT_WINDOW_S  = int(os.getenv("RATE_LIMIT_WINDOW_S", "60"))
@@ -235,10 +252,29 @@ class AlertItem(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=12)
     target_price: float = Field(..., gt=0)
     condition: AlertCondition
+    notify_email: bool = True
+    notify_sms: bool = False
 
     @validator("symbol")
     def upper_symbol(cls, v: str) -> str:
         return v.upper().strip()
+
+
+class PhoneStart(BaseModel):
+    phone: str = Field(..., min_length=8, max_length=20)
+
+    @validator("phone")
+    def e164(cls, v: str) -> str:
+        v = re.sub(r"[\s\-().]", "", v)
+        if v.isdigit() and len(v) == 10:
+            v = "+1" + v  # plain 10-digit US number
+        if not re.fullmatch(r"\+[1-9]\d{7,14}", v):
+            raise ValueError("Enter your number with country code, e.g. +19165550123")
+        return v
+
+
+class PhoneVerify(BaseModel):
+    code: str = Field(..., min_length=6, max_length=6)
 
 
 class CheckoutRequest(BaseModel):
@@ -394,10 +430,46 @@ def _check_token_version(data: Dict[str, Any], user: Dict[str, Any]):
     if data.get("ver", 0) != user.get("token_version", 0):
         raise HTTPException(status_code=401, detail="Session expired, please log in again")
 
+def _user_from_frontend(request: Request) -> Optional[Dict[str, Any]]:
+    """Trusted call from the Next.js server (Google sign-in lives there).
+    The frontend proves itself with INTERNAL_API_KEY, a secret only it and this
+    backend know, and says which signed-in user it is acting for."""
+    key = request.headers.get("x-internal-key", "")
+    email = request.headers.get("x-user-email", "").strip().lower()
+    if not (INTERNAL_API_KEY and key and email):
+        return None
+    if not hmac.compare_digest(key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid internal key")
+    user = db.users.find_one({"email": email})
+    if not user:
+        # First visit from a Google-signed-in user: create their account.
+        doc = {
+            "email": email,
+            "password": None,
+            "auth_provider": "google",
+            "name": request.headers.get("x-user-name", "")[:120],
+            "role": "user",
+            "email_verified": True,  # Google already verified it
+            "subscription_tier": "free",
+            "token_version": 0,
+            "created_at": datetime.utcnow(),
+        }
+        try:
+            doc["_id"] = db.users.insert_one(doc).inserted_id
+            user = doc
+        except Exception:
+            user = db.users.find_one({"email": email})  # created by a parallel request
+    user["_id"] = str(user["_id"])
+    return user
+
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ):
     require_db()
+    frontend_user = _user_from_frontend(request)
+    if frontend_user:
+        return frontend_user
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
     data = _decode_token(credentials.credentials, expected_type="access")
@@ -420,6 +492,8 @@ def _user_tier(user: Dict[str, Any]) -> str:
 
 def require_tier(min_tier: str):
     async def _dep(user: Dict[str, Any] = Depends(get_current_user)):
+        if user.get("role") == "admin":
+            return user  # the owner can test every feature without paying
         if TIER_RANK.get(_user_tier(user), 0) < TIER_RANK.get(min_tier, 0):
             raise HTTPException(
                 status_code=402,
@@ -782,8 +856,23 @@ def health():
 def db_status():
     return {"mongodb": db.is_connected, "database": MONGODB_DB_NAME}
 
+def _viewer(request: Request) -> Optional[Dict[str, Any]]:
+    """The signed-in user when the call comes through the frontend, else None."""
+    if not db.is_connected:
+        return None
+    try:
+        return _user_from_frontend(request)
+    except HTTPException:
+        return None
+
+def _can_use_ai(user: Optional[Dict[str, Any]]) -> bool:
+    if FREE_AI_SUMMARIES:
+        return True
+    return bool(user) and (user.get("role") == "admin"
+                           or TIER_RANK.get(_user_tier(user), 0) >= TIER_RANK["pro"])
+
 @app.get("/api/stock/{symbol}")
-def get_stock(symbol: str, period: str = "3mo"):
+def get_stock(symbol: str, request: Request, period: str = "3mo"):
     symbol = symbol.upper().strip()
     _check_period(period)
     hist = safe_history(symbol, period=period)
@@ -796,11 +885,15 @@ def get_stock(symbol: str, period: str = "3mo"):
         "macd": {"macd": macd, "signal": signal, "histogram": hist_val},
         "bollinger": {"upper": upper, "middle": mid, "lower": lower},
     }
+    ai_ok = _can_use_ai(_viewer(request))
     return {
         "symbol": symbol,
         "metrics": metrics,
         "history": df_to_records(hist),
-        "summary": generate_dual_summary(symbol, metrics),
+        # AI summaries are a Starter feature; everyone gets the free automated reading.
+        "summary": (generate_dual_summary(symbol, metrics) if ai_ok
+                    else {"rules": rule_based_summary(symbol, metrics)}),
+        "ai_locked": not ai_ok,
         "source": "Yahoo Finance (may be delayed)",
         "disclaimer": DISCLAIMER,
     }
@@ -971,14 +1064,64 @@ app.include_router(news_router)
 # STRIPE
 # ============================================================
 PLANS = [
-    # Lineup: Free -> Starter $99 -> Premium $199. The old $9 "basic" plan is no
+    # Lineup: Free -> Starter $15 -> Premium $35. The old $9 "basic" plan is no
     # longer sold (TIER_RANK still knows it, so any existing basic subscriber keeps access).
     # Starter keeps id/tier "pro" so require_tier("pro") gating keeps working.
-    {"id": "pro",     "name": "StockAI Starter", "price": 9900,  "currency": "usd",
-     "interval": "month", "tier": "pro"},
-    {"id": "premium", "name": "StockAI Premium", "price": 19900, "currency": "usd",
-     "interval": "month", "tier": "premium"},
+    # stripe_price_id: the price_... ID from Stripe's Product catalog (set via env var).
+    # If it's empty, checkout falls back to an inline price built from "price" below.
+    {"id": "pro",     "name": "StockAI Starter", "price": 1200,  "currency": "usd",
+     "interval": "month", "tier": "pro",
+     "stripe_price_id": os.getenv("STRIPE_PRICE_STARTER", "")},
+    {"id": "premium", "name": "StockAI Premium", "price": 5000,  "currency": "usd",
+     "interval": "month", "tier": "premium",
+     "stripe_price_id": os.getenv("STRIPE_PRICE_PREMIUM", "")},
 ]
+
+def _checkout_line_item(plan: Dict[str, Any]) -> Dict[str, Any]:
+    if plan.get("stripe_price_id"):
+        return {"price": plan["stripe_price_id"], "quantity": 1}
+    return {
+        "price_data": {
+            "currency": plan["currency"],
+            "unit_amount": plan["price"],
+            "recurring": {"interval": plan["interval"]},
+            "product_data": {"name": plan["name"]},
+        },
+        "quantity": 1,
+    }
+
+# Paid trial: $5 today for 5 days of access, then the plan's monthly price.
+# One trial per account (any plan). Set TRIAL_DAYS=0 in Cloud Run to switch trials off.
+TRIAL_DAYS = int(os.getenv("TRIAL_DAYS", "5"))
+TRIAL_FEE_CENTS = int(os.getenv("TRIAL_FEE_CENTS", "500"))
+STRIPE_PRICE_TRIAL_FEE = os.getenv("STRIPE_PRICE_TRIAL_FEE", "")  # optional one-time price_... ID
+
+def _trial_fee_line_item() -> Dict[str, Any]:
+    if STRIPE_PRICE_TRIAL_FEE:
+        return {"price": STRIPE_PRICE_TRIAL_FEE, "quantity": 1}
+    return {
+        "price_data": {
+            "currency": "usd",
+            "unit_amount": TRIAL_FEE_CENTS,
+            "product_data": {"name": f"StockAI {TRIAL_DAYS}-day trial"},
+        },
+        "quantity": 1,
+    }
+
+def _trial_eligible(user: Dict[str, Any]) -> bool:
+    if TRIAL_DAYS <= 0:
+        return False
+    if user.get("had_trial"):
+        return False
+    try:
+        if db.users.find_one({"_id": ObjectId(user["_id"]), "had_trial": True}):
+            return False
+        if db.subscriptions.find_one({"user_id": user["_id"]}):
+            return False  # has subscribed before
+    except Exception as e:
+        logger.warning(f"Trial eligibility check failed: {e}")
+        return False
+    return True
 
 def _allowed_redirect(url: str) -> bool:
     # Only send users back to your own sites after checkout
@@ -987,7 +1130,7 @@ def _allowed_redirect(url: str) -> bool:
 
 @app.get("/api/plans")
 def plans():
-    return {"plans": PLANS}
+    return {"plans": PLANS, "trial": {"days": TRIAL_DAYS, "fee": TRIAL_FEE_CENTS, "currency": "usd"} if TRIAL_DAYS > 0 else None}
 
 @app.post("/api/create-checkout-session")
 def create_checkout_session(req: CheckoutRequest,
@@ -999,28 +1142,27 @@ def create_checkout_session(req: CheckoutRequest,
         raise HTTPException(404, "Plan not found")
     if not (_allowed_redirect(req.success_url) and _allowed_redirect(req.cancel_url)):
         raise HTTPException(400, "success_url and cancel_url must point to this site")
+    trial = _trial_eligible(user)
+    line_items = [_checkout_line_item(plan)]
+    meta = {"user_id": user["_id"], "tier": plan["tier"], "trial": "1" if trial else "0"}
+    sub_data: Dict[str, Any] = {"metadata": meta}
+    if trial:
+        line_items.append(_trial_fee_line_item())   # charged today
+        sub_data["trial_period_days"] = TRIAL_DAYS  # monthly price starts after the trial
     try:
         session = stripe.checkout.Session.create(
             mode="subscription",
-            line_items=[{
-                "price_data": {
-                    "currency": plan["currency"],
-                    "unit_amount": plan["price"],
-                    "recurring": {"interval": plan["interval"]},
-                    "product_data": {"name": plan["name"]},
-                },
-                "quantity": 1,
-            }],
+            line_items=line_items,
             customer_email=user["email"],
-            metadata={"user_id": user["_id"], "tier": plan["tier"]},
-            subscription_data={"metadata": {"user_id": user["_id"], "tier": plan["tier"]}},
+            metadata=meta,
+            subscription_data=sub_data,
             success_url=req.success_url,
             cancel_url=req.cancel_url,
         )
     except Exception as e:
         logger.error(f"Stripe checkout error: {e}")
         raise HTTPException(502, "Couldn't start checkout, please try again")
-    return {"checkout_url": session.url, "session_id": session.id}
+    return {"checkout_url": session.url, "session_id": session.id, "trial": trial}
 
 def _set_user_tier(user_id: Optional[str], tier: str):
     if not user_id:
@@ -1065,6 +1207,11 @@ async def stripe_webhook(request: Request):
                 upsert=True,
             )
             _set_user_tier(user_id, tier)
+            if meta.get("trial") == "1":
+                try:
+                    db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"had_trial": True}})
+                except Exception as e:
+                    logger.warning(f"had_trial update failed for {user_id}: {e}")
 
     elif etype == "customer.subscription.updated":
         # Covers failed payments / past_due / unpaid, not just cancellations
@@ -1094,6 +1241,23 @@ async def stripe_webhook(request: Request):
 @app.get("/success")
 def success():
     return {"status": "success", "message": "Subscription activated."}
+
+@app.post("/api/billing-portal")
+def billing_portal(user: Dict[str, Any] = Depends(get_current_user)):
+    """Stripe-hosted page where subscribers can change plan, update card or cancel."""
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(503, "Stripe not configured")
+    require_db()
+    sub = db.subscriptions.find_one({"user_id": user["_id"]})
+    if not sub or not sub.get("stripe_customer_id"):
+        raise HTTPException(404, "No subscription found for this account")
+    try:
+        session = stripe.billing_portal.Session.create(
+            customer=sub["stripe_customer_id"], return_url=f"{FRONTEND_URL}/pricing")
+    except Exception as e:
+        logger.error(f"Billing portal error: {e}")
+        raise HTTPException(502, "Couldn't open billing, please try again")
+    return {"url": session.url}
 
 @app.get("/cancel")
 def cancel():
@@ -1170,7 +1334,8 @@ def register(user: UserRegister):
 def login(user: UserLogin):
     require_db()
     db_user = db.users.find_one({"email": user.email})
-    if not db_user or not verify_password(user.password, db_user["password"]):
+    if not db_user or not db_user.get("password") or not verify_password(user.password, db_user["password"]):
+        # Google-only accounts have no password and must sign in with Google
         raise HTTPException(401, "Invalid credentials")
     return {
         **issue_tokens(db_user),
@@ -1297,12 +1462,53 @@ def reset_password(req: PasswordResetConfirm):
 # ============================================================
 # WATCHLIST
 # ============================================================
+_QUOTE_CACHE: Dict[str, Dict[str, Any]] = {}
+_QUOTE_TTL = 60
+
+def _fetch_quotes(symbols: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
+    """Latest close and % change vs the previous close, for many symbols at once.
+    Cached for 60s so a busy watchlist page doesn't hammer the data source."""
+    now = datetime.utcnow().timestamp()
+    out: Dict[str, Dict[str, Optional[float]]] = {}
+    missing = []
+    for s in symbols:
+        c = _QUOTE_CACHE.get(s)
+        if c and now - c["ts"] < _QUOTE_TTL:
+            out[s] = c["q"]
+        else:
+            missing.append(s)
+    if missing:
+        try:
+            df = yf.download(missing, period="5d", interval="1d", group_by="ticker",
+                             progress=False, threads=True, auto_adjust=False)
+        except Exception as e:
+            logger.warning(f"Quote batch failed: {e}")
+            df = None
+        for s in missing:
+            q: Dict[str, Optional[float]] = {"price": None, "change_pct": None}
+            try:
+                if df is not None and not df.empty:
+                    closes = (df[s]["Close"] if isinstance(df.columns, pd.MultiIndex) else df["Close"]).dropna()
+                    if len(closes):
+                        q["price"] = float(closes.iloc[-1])
+                    if len(closes) >= 2 and closes.iloc[-2]:
+                        q["change_pct"] = float((closes.iloc[-1] / closes.iloc[-2] - 1) * 100)
+            except Exception:
+                pass
+            _QUOTE_CACHE[s] = {"ts": now, "q": q}
+            out[s] = q
+    return out
+
+PREMIUM = require_tier("premium")
+
 @app.post("/api/watchlist", status_code=201)
 def add_watchlist(item: WatchlistItem,
-                  current_user: Dict[str, Any] = Depends(get_current_user)):
+                  current_user: Dict[str, Any] = Depends(PREMIUM)):
     require_db()
     if db.watchlists.find_one({"user_id": current_user["_id"], "symbol": item.symbol}):
         raise HTTPException(409, "Already in watchlist")
+    if db.watchlists.count_documents({"user_id": current_user["_id"]}) >= MAX_WATCHLIST:
+        raise HTTPException(400, f"Watchlist is limited to {MAX_WATCHLIST} symbols")
     db.watchlists.insert_one({
         "user_id": current_user["_id"],
         "symbol": item.symbol,
@@ -1311,16 +1517,20 @@ def add_watchlist(item: WatchlistItem,
     return {"status": "added", "symbol": item.symbol}
 
 @app.get("/api/watchlist")
-def get_watchlist(current_user: Dict[str, Any] = Depends(get_current_user)):
+def get_watchlist(quotes: bool = False,
+                  current_user: Dict[str, Any] = Depends(PREMIUM)):
     require_db()
-    docs = list(db.watchlists.find({"user_id": current_user["_id"]}))
-    for d in docs:
-        d["_id"] = str(d["_id"])
-    return {"watchlist": docs}
+    docs = list(db.watchlists.find({"user_id": current_user["_id"]}).sort("added_at", 1))
+    items = [{"symbol": d["symbol"], "added_at": d.get("added_at")} for d in docs]
+    if quotes and items:
+        q = _fetch_quotes([i["symbol"] for i in items])
+        for i in items:
+            i.update(q.get(i["symbol"], {}))
+    return {"watchlist": items, "limit": MAX_WATCHLIST}
 
 @app.delete("/api/watchlist/{symbol}")
 def delete_watchlist(symbol: str,
-                     current_user: Dict[str, Any] = Depends(get_current_user)):
+                     current_user: Dict[str, Any] = Depends(PREMIUM)):
     require_db()
     result = db.watchlists.delete_one({
         "user_id": current_user["_id"], "symbol": symbol.upper(),
@@ -1334,7 +1544,7 @@ def delete_watchlist(symbol: str,
 # ============================================================
 @app.post("/api/portfolio", status_code=201)
 def add_portfolio(tx: PortfolioItem,
-                  current_user: Dict[str, Any] = Depends(get_current_user)):
+                  current_user: Dict[str, Any] = Depends(PREMIUM)):
     require_db()
     uid = current_user["_id"]
     holding = db.portfolio.find_one({"user_id": uid, "symbol": tx.symbol})
@@ -1380,7 +1590,7 @@ def add_portfolio(tx: PortfolioItem,
     return {"status": "success"}
 
 @app.get("/api/portfolio")
-def get_portfolio(current_user: Dict[str, Any] = Depends(get_current_user)):
+def get_portfolio(current_user: Dict[str, Any] = Depends(PREMIUM)):
     require_db()
     docs = list(db.portfolio.find({"user_id": current_user["_id"]}))
     for d in docs:
@@ -1389,7 +1599,7 @@ def get_portfolio(current_user: Dict[str, Any] = Depends(get_current_user)):
 
 @app.delete("/api/portfolio/{symbol}")
 def delete_portfolio(symbol: str,
-                     current_user: Dict[str, Any] = Depends(get_current_user)):
+                     current_user: Dict[str, Any] = Depends(PREMIUM)):
     require_db()
     result = db.portfolio.delete_one({
         "user_id": current_user["_id"], "symbol": symbol.upper(),
@@ -1401,34 +1611,158 @@ def delete_portfolio(symbol: str,
 # ============================================================
 # ALERTS
 # ============================================================
+def sms_enabled() -> bool:
+    return bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER)
+
+def send_sms(to: str, body: str) -> bool:
+    if not sms_enabled():
+        logger.info(f"[SMS STUB] to=...{to[-4:]} body={body[:40]}")
+        return False
+    import requests  # installed with yfinance
+    data = {"To": to, "Body": body}
+    if TWILIO_FROM_NUMBER.startswith("MG"):
+        data["MessagingServiceSid"] = TWILIO_FROM_NUMBER
+    else:
+        data["From"] = TWILIO_FROM_NUMBER
+    try:
+        r = requests.post(
+            f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json",
+            data=data, auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN), timeout=10,
+        )
+        if r.status_code >= 300:
+            logger.error(f"Twilio error {r.status_code}: {r.text[:200]}")
+            return False
+        return True
+    except Exception as e:
+        logger.error(f"SMS send failed: {e}")
+        return False
+
+def _consume_sms_quota(user_id: str) -> bool:
+    """Atomically count one SMS against the user's daily cap. False = over the cap."""
+    oid = ObjectId(user_id)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    r = db.users.update_one({"_id": oid, "sms_day": today, "sms_count": {"$lt": SMS_DAILY_LIMIT}},
+                            {"$inc": {"sms_count": 1}})
+    if r.modified_count:
+        return True
+    r = db.users.update_one({"_id": oid, "sms_day": {"$ne": today}},
+                            {"$set": {"sms_day": today, "sms_count": 1}})
+    return r.modified_count == 1
+
+def _hash_code(user_id: str, code: str) -> str:
+    return hmac.new(JWT_SECRET.encode(), f"{user_id}:{code}".encode(), "sha256").hexdigest()
+
+def _is_premium(user: Dict[str, Any]) -> bool:
+    return user.get("role") == "admin" or TIER_RANK.get(_user_tier(user), 0) >= TIER_RANK["premium"]
+
+# ---------- current user / account ----------
+@app.get("/api/me")
+def whoami(current_user: Dict[str, Any] = Depends(get_current_user)):
+    tier = _user_tier(current_user)
+    return {
+        "email": current_user["email"],
+        "tier": "premium" if current_user.get("role") == "admin" else tier,
+        "plan_name": {"pro": "Starter", "premium": "Premium"}.get(tier, "Free"),
+        "is_premium": _is_premium(current_user),
+        "phone": current_user.get("phone"),
+        "phone_verified": bool(current_user.get("phone_verified")),
+        "sms_available": sms_enabled(),
+        "sms_daily_limit": SMS_DAILY_LIMIT,
+        "limits": {"watchlist": MAX_WATCHLIST, "alerts": MAX_ALERTS},
+        "trial_eligible": _trial_eligible(current_user),
+    }
+
+@app.post("/api/me/phone", dependencies=[Depends(rate_limit)])
+def start_phone_verification(req: PhoneStart, current_user: Dict[str, Any] = Depends(PREMIUM)):
+    require_db()
+    if not sms_enabled():
+        raise HTTPException(503, "Text messages aren't switched on yet")
+    if not _consume_sms_quota(current_user["_id"]):
+        raise HTTPException(429, "Too many texts today, please try again tomorrow")
+    code = f"{random.SystemRandom().randint(0, 999999):06d}"
+    db.users.update_one({"_id": ObjectId(current_user["_id"])}, {"$set": {
+        "phone_pending": req.phone,
+        "phone_code_hash": _hash_code(current_user["_id"], code),
+        "phone_code_expires": datetime.utcnow() + timedelta(minutes=10),
+        "phone_code_attempts": 0,
+    }})
+    if not send_sms(req.phone, f"Your StockAI verification code is {code}. It expires in 10 minutes."):
+        raise HTTPException(502, "Couldn't send the text. Check the number and try again.")
+    return {"status": "sent", "phone": req.phone}
+
+@app.post("/api/me/phone/verify", dependencies=[Depends(rate_limit)])
+def verify_phone(req: PhoneVerify, current_user: Dict[str, Any] = Depends(PREMIUM)):
+    require_db()
+    u = current_user
+    if not u.get("phone_pending") or not u.get("phone_code_hash"):
+        raise HTTPException(400, "Request a code first")
+    if u.get("phone_code_expires") and u["phone_code_expires"] < datetime.utcnow():
+        raise HTTPException(400, "Code expired, request a new one")
+    if u.get("phone_code_attempts", 0) >= 5:
+        raise HTTPException(429, "Too many attempts, request a new code")
+    oid = ObjectId(u["_id"])
+    if not hmac.compare_digest(_hash_code(u["_id"], req.code), u["phone_code_hash"]):
+        db.users.update_one({"_id": oid}, {"$inc": {"phone_code_attempts": 1}})
+        raise HTTPException(400, "That code isn't right")
+    db.users.update_one({"_id": oid}, {
+        "$set": {"phone": u["phone_pending"], "phone_verified": True, "phone_verified_at": datetime.utcnow()},
+        "$unset": {"phone_pending": "", "phone_code_hash": "", "phone_code_expires": "", "phone_code_attempts": ""},
+    })
+    return {"status": "verified", "phone": u["phone_pending"]}
+
+@app.delete("/api/me/phone")
+def remove_phone(current_user: Dict[str, Any] = Depends(get_current_user)):
+    require_db()
+    db.users.update_one({"_id": ObjectId(current_user["_id"])}, {
+        "$unset": {"phone": "", "phone_verified": "", "phone_pending": "", "phone_code_hash": ""}})
+    db.alerts.update_many({"user_id": current_user["_id"]}, {"$set": {"notify_sms": False}})
+    return {"status": "removed"}
+
+# ---------- alerts ----------
+def _alert_out(d: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": str(d["_id"]), "symbol": d["symbol"], "condition": d["condition"],
+        "target_price": d["target_price"], "notify_email": d.get("notify_email", True),
+        "notify_sms": d.get("notify_sms", False), "active": d.get("active", True),
+        "triggered": d.get("triggered", False), "triggered_at": d.get("triggered_at"),
+        "triggered_price": d.get("triggered_price"), "created_at": d.get("created_at"),
+    }
+
 @app.post("/api/alerts", status_code=201)
 def create_alert(alert: AlertItem,
-                 current_user: Dict[str, Any] = Depends(get_current_user)):
+                 current_user: Dict[str, Any] = Depends(PREMIUM)):
     require_db()
+    if not (alert.notify_email or alert.notify_sms):
+        raise HTTPException(400, "Choose email, text message, or both")
+    if alert.notify_sms and not current_user.get("phone_verified"):
+        raise HTTPException(400, "Verify your phone number before turning on text alerts")
+    if db.alerts.count_documents({"user_id": current_user["_id"], "active": True}) >= MAX_ALERTS:
+        raise HTTPException(400, f"You can have up to {MAX_ALERTS} active alerts")
     doc = {
         "user_id": current_user["_id"],
         "symbol": alert.symbol,
         "target_price": alert.target_price,
         "condition": alert.condition.value,
+        "notify_email": alert.notify_email,
+        "notify_sms": alert.notify_sms,
         "created_at": datetime.utcnow(),
         "active": True,
         "triggered": False,
         "triggered_at": None,
     }
     result = db.alerts.insert_one(doc)
-    return {"status": "created", "alert_id": str(result.inserted_id)}
+    doc["_id"] = result.inserted_id
+    return {"status": "created", "alert": _alert_out(doc)}
 
 @app.get("/api/alerts")
-def get_alerts(current_user: Dict[str, Any] = Depends(get_current_user)):
+def get_alerts(current_user: Dict[str, Any] = Depends(PREMIUM)):
     require_db()
-    docs = list(db.alerts.find({"user_id": current_user["_id"]}))
-    for d in docs:
-        d["_id"] = str(d["_id"])
-    return {"alerts": docs}
+    docs = list(db.alerts.find({"user_id": current_user["_id"]}).sort("created_at", -1).limit(200))
+    return {"alerts": [_alert_out(d) for d in docs], "limit": MAX_ALERTS}
 
 @app.delete("/api/alerts/{alert_id}")
 def delete_alert(alert_id: str,
-                 current_user: Dict[str, Any] = Depends(get_current_user)):
+                 current_user: Dict[str, Any] = Depends(PREMIUM)):
     require_db()
     try:
         oid = ObjectId(alert_id)
@@ -1483,13 +1817,21 @@ def _check_alerts_once():
             user = db.users.find_one({"_id": ObjectId(alert["user_id"])})
         except Exception:
             user = None
-        if user:
+        if user and _is_premium(user):
             direction = "above" if cond == "ABOVE" else "below"
-            send_email(
-                user["email"],
-                f"StockAI alert: {symbol} is {direction} {target}",
-                f"{symbol} is now {price:.4g}, {direction} your alert level of {target}.\n\n{DISCLAIMER}",
-            )
+            if alert.get("notify_email", True):
+                send_email(
+                    user["email"],
+                    f"StockAI alert: {symbol} is {direction} {target}",
+                    f"{symbol} is now {price:.4g}, {direction} your alert level of {target}.\n\n{DISCLAIMER}",
+                )
+            if alert.get("notify_sms") and user.get("phone_verified") and user.get("phone"):
+                if _consume_sms_quota(str(user["_id"])):
+                    send_sms(user["phone"],
+                             f"StockAI: {symbol} is {price:.4g}, {direction} your alert at {target}. "
+                             f"Not financial advice. Reply STOP to opt out.")
+                else:
+                    logger.info(f"SMS daily cap reached for user {user['_id']}")
         logger.info(f"Alert fired: {symbol} {cond} {target} @ {price}")
 
 async def alert_checker_loop():
@@ -1586,6 +1928,15 @@ def premium_deep_analysis(symbol: str,
         "note": "Premium-only deep analysis",
         "disclaimer": DISCLAIMER,
     }
+
+
+# ---------------------------------------------------------------------------
+# Trading routers
+# ---------------------------------------------------------------------------
+from paper_trading import router as paper_router
+from live_trading  import router as live_router
+app.include_router(paper_router, prefix="/api/paper", tags=["paper-trading"])
+app.include_router(live_router,  prefix="/api/live",  tags=["live-trading"])
 
 # ============================================================
 # RUN
